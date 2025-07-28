@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"math/rand"
 	"net/http"
 	"os/signal"
@@ -24,7 +24,8 @@ func main() {
 	var err error
 	provider, err = oidc.NewProvider(ctx, "http://localhost:8081")
 	if err != nil {
-		log.Fatalf("Failed to create provider: %v", err)
+		slog.Error(fmt.Sprintf("Failed to create OIDC provider: %v", err))
+		return
 	}
 	config = &oauth2.Config{
 		ClientID:     "1234",
@@ -50,7 +51,7 @@ func main() {
 		Handler: mux,
 	}
 
-	log.Println("Server is running at :8080 Press CTRL-C to exit.")
+	slog.Info("Server is running at :8080 Press CTRL-C to exit.")
 	go srv.ListenAndServe()
 
 	<-srvCtx.Done()
@@ -58,7 +59,7 @@ func main() {
 	srvCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(srvCtx); err != nil {
-		log.Printf("HTTP server Shutdown: %v", err)
+		slog.Error(fmt.Sprintf("Failed to shutdown server: %v", err))
 	}
 }
 
@@ -77,11 +78,13 @@ func generateCodeVerifier() string {
 }
 
 func login(w http.ResponseWriter, req *http.Request) {
-	endpoint := config.AuthCodeURL("state", oauth2.S256ChallengeOption(generateCodeVerifier()))
+	endpoint := config.AuthCodeURL("state", oauth2.S256ChallengeOption(generateCodeVerifier()), oauth2.SetAuthURLParam("client_id", config.ClientID))
+	slog.Info("Redirecting to OIDC provider for login", "endpoint", endpoint)
 	http.Redirect(w, req, endpoint, http.StatusFound)
 }
 
 func callback(w http.ResponseWriter, req *http.Request) {
+	slog.Info("Handling callback from OIDC provider")
 	token, err := config.Exchange(ctx, "code")
 	if err != nil {
 		http.Error(w, "Failed to exchange code for token: "+err.Error(), http.StatusInternalServerError)
@@ -95,14 +98,14 @@ func callback(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, "Token is invalid", http.StatusInternalServerError)
 		return
 	}
-	log.Printf("Access Token: %s", token.AccessToken)
+	slog.Info("Token is valid", "token", token)
 
 	idToken := token.Extra("id_token").(string)
 	if idToken == "" {
 		http.Error(w, "ID Token is empty", http.StatusInternalServerError)
 		return
 	}
-	log.Printf("ID Token: %s", idToken)
+	slog.Info("ID Token", "token", idToken)
 
 	if _, err := provider.Verifier(&oidc.Config{
 		ClientID: "1234",

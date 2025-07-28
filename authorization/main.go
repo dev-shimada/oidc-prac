@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
-	"log"
 	"log/slog"
 	"net/http"
 	"os/signal"
@@ -121,7 +120,7 @@ func wellKnownOpenIdConfiguration(w http.ResponseWriter, req *http.Request) {
 	}
 	res, err := json.Marshal(config)
 	if err != nil {
-		log.Println("json marshal err")
+		slog.Error(fmt.Sprintf("json marshal err: %v", err))
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("internal server error"))
 		return
@@ -137,7 +136,7 @@ func auth(w http.ResponseWriter, req *http.Request) {
 	// 必須パラメータのチェック
 	for _, v := range requiredParameter {
 		if !query.Has(v) {
-			log.Printf("%s is missing", v)
+			slog.Error(fmt.Sprintf("%s is missing", v))
 			w.WriteHeader(http.StatusBadRequest)
 			w.Write([]byte(fmt.Sprintf("invalid_request. %s is missing", v)))
 			return
@@ -145,13 +144,14 @@ func auth(w http.ResponseWriter, req *http.Request) {
 	}
 	// client id の一致確認
 	if clientInfo.Id != query.Get("client_id") {
-		log.Printf("want: %s, got: %s", clientInfo.Id, query.Get("client_id"))
+		slog.Error(fmt.Sprintf("want: %s, got: %s", clientInfo.Id, query.Get("client_id")))
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("client_id is not match"))
 		return
 	}
 	// レスポンスタイプはいったん認可コードだけをサポート
 	if query.Get("response_type") != "code" {
+		slog.Error(fmt.Sprintf("want: code, got: %s", query.Get("response_type")))
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("only support code"))
 		return
@@ -179,7 +179,7 @@ func auth(w http.ResponseWriter, req *http.Request) {
 	var templates = make(map[string]*template.Template)
 	var err error
 	if templates["login"], err = template.ParseFiles("login.html"); err != nil {
-		log.Fatal(err)
+		slog.Error(fmt.Sprintf("Failed to parse login template: %v", err))
 	}
 	if err := templates["login"].Execute(w, struct {
 		ClientId string
@@ -188,16 +188,16 @@ func auth(w http.ResponseWriter, req *http.Request) {
 		ClientId: session.Client,
 		Scope:    session.Scopes,
 	}); err != nil {
-		log.Println(err)
+		slog.Error(fmt.Sprintf("Failed to execute login template: %v", err))
 	}
-	log.Println("return login page...")
+	slog.Info("return login page...")
 
 }
 
 var user = types.User{
-	Id:          1111,
-	Name:        "hoge",
-	Password:    "password",
+	Id:          1,
+	Name:        "name",
+	Password:    "pw",
 	Sub:         "11111111",
 	Name_ja:     "徳川慶喜",
 	Given_name:  "慶喜",
@@ -232,7 +232,7 @@ func authCheck(w http.ResponseWriter, req *http.Request) {
 		// 認可コードを保存
 		AuthCodeList[authCodeString] = authData
 
-		log.Printf("auth code accepet : %v\n", authData)
+		slog.Info("auth code accepted", "authCode", authCodeString)
 
 		location := fmt.Sprintf("%s?code=%s&state=%s", v.RedirectUri, authCodeString, v.State)
 		w.Header().Add("Location", location)
@@ -282,7 +282,7 @@ func token(w http.ResponseWriter, req *http.Request) {
 	// 必須パラメータのチェック
 	for _, v := range requiredParameter {
 		if !query.Has(v) {
-			log.Printf("%s is missing", v)
+			slog.Error(fmt.Sprintf("%s is missing", v))
 			w.WriteHeader(http.StatusBadRequest)
 			b := make([]byte, 0)
 			w.Write(fmt.Appendf(b, "invalid_request. %s is missing\n", v))
@@ -300,14 +300,14 @@ func token(w http.ResponseWriter, req *http.Request) {
 	slog.Info(fmt.Sprintf("auth code is %s", query.Get("code")))
 	v, ok := AuthCodeList[query.Get("code")]
 	if !ok {
-		log.Println("auth code isn't exist")
+		slog.Error("auth code isn't exist")
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("no authrization code"))
 	}
 
 	// 認可リクエスト時のクライアントIDと比較
 	if v.ClientId != query.Get("client_id") {
-		log.Println("client_id not match")
+		slog.Error("client_id not match")
 		w.WriteHeader(http.StatusBadRequest)
 		// w.Write([]byte("invalid_request. client_id not match.\n"))
 		w.Write([]byte("client_id is not match"))
@@ -315,21 +315,21 @@ func token(w http.ResponseWriter, req *http.Request) {
 
 	// 認可リクエスト時のリダイレクトURIと比較
 	if v.Redirect_uri != query.Get("redirect_uri") {
-		log.Println("redirect_uri not match")
+		slog.Error("redirect_uri not match")
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("invalid_request. redirect_uri not match.\n"))
 	}
 
 	// 認可コードの有効期限を確認
 	if v.Expires_at < time.Now().Unix() {
-		log.Println("authcode expire")
+		slog.Error("authcode expire")
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("invalid_request. auth code time limit is expire.\n"))
 	}
 
 	// clientシークレットの確認
 	if clientInfo.Secret != query.Get("client_secret") {
-		log.Println("client_secret is not match.")
+		slog.Error("client_secret is not match.")
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("invalid_request. client_secret is not match.\n"))
 	}
@@ -364,10 +364,10 @@ func token(w http.ResponseWriter, req *http.Request) {
 	}
 	resp, err := json.Marshal(tokenResp)
 	if err != nil {
-		log.Println("json marshal err")
+		slog.Error(fmt.Sprintf("json marshal err: %v", err))
 	}
 
-	log.Printf("token ok to client %s, token is %s", v.ClientId, string(resp))
+	slog.Info("token ok to client", "clientId", v.ClientId, "token", string(resp))
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write(resp)
