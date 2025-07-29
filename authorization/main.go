@@ -237,9 +237,7 @@ func authCheck(w http.ResponseWriter, req *http.Request) {
 		location := fmt.Sprintf("%s?code=%s&state=%s", v.RedirectUri, authCodeString, v.State)
 		w.Header().Add("Location", location)
 		w.WriteHeader(302)
-
 	}
-
 }
 
 type CodeChallengeMethod string

@@ -16,7 +16,7 @@ import (
 
 var (
 	provider *oidc.Provider
-	config   *oauth2.Config
+	config   oauth2.Config
 	ctx      = context.Background()
 )
 
@@ -27,7 +27,7 @@ func main() {
 		slog.Error(fmt.Sprintf("Failed to create OIDC provider: %v", err))
 		return
 	}
-	config = &oauth2.Config{
+	config = oauth2.Config{
 		ClientID:     "1234",
 		ClientSecret: "secret",
 		Endpoint:     provider.Endpoint(),
@@ -78,14 +78,20 @@ func generateCodeVerifier() string {
 }
 
 func login(w http.ResponseWriter, req *http.Request) {
-	endpoint := config.AuthCodeURL("state", oauth2.S256ChallengeOption(generateCodeVerifier()), oauth2.SetAuthURLParam("client_id", config.ClientID))
+	endpoint := config.AuthCodeURL(
+		"state",
+		oauth2.S256ChallengeOption(generateCodeVerifier()),
+		oauth2.SetAuthURLParam("client_id", config.ClientID),
+		oauth2.SetAuthURLParam("client_secret", config.ClientSecret),
+		oauth2.SetAuthURLParam("code_verifier", generateCodeVerifier()),
+	)
 	slog.Info("Redirecting to OIDC provider for login", "endpoint", endpoint)
 	http.Redirect(w, req, endpoint, http.StatusFound)
 }
 
 func callback(w http.ResponseWriter, req *http.Request) {
 	slog.Info("Handling callback from OIDC provider")
-	token, err := config.Exchange(ctx, "code")
+	token, err := config.Exchange(ctx, req.FormValue("code"), oauth2.SetAuthURLParam("client_id", config.ClientID))
 	if err != nil {
 		http.Error(w, "Failed to exchange code for token: "+err.Error(), http.StatusInternalServerError)
 		return
