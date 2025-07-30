@@ -82,8 +82,6 @@ func login(w http.ResponseWriter, req *http.Request) {
 		"state",
 		oauth2.S256ChallengeOption(generateCodeVerifier()),
 		oauth2.SetAuthURLParam("client_id", config.ClientID),
-		oauth2.SetAuthURLParam("client_secret", config.ClientSecret),
-		oauth2.SetAuthURLParam("code_verifier", generateCodeVerifier()),
 	)
 	slog.Info("Redirecting to OIDC provider for login", "endpoint", endpoint)
 	http.Redirect(w, req, endpoint, http.StatusFound)
@@ -91,7 +89,13 @@ func login(w http.ResponseWriter, req *http.Request) {
 
 func callback(w http.ResponseWriter, req *http.Request) {
 	slog.Info("Handling callback from OIDC provider")
-	token, err := config.Exchange(ctx, req.FormValue("code"), oauth2.SetAuthURLParam("client_id", config.ClientID))
+	token, err := config.Exchange(
+		ctx,
+		req.FormValue("code"),
+		oauth2.SetAuthURLParam("client_id", config.ClientID),
+		// oauth2.SetAuthURLParam("client_secret", config.ClientSecret),
+		oauth2.SetAuthURLParam("code_verifier", generateCodeVerifier()),
+	)
 	if err != nil {
 		http.Error(w, "Failed to exchange code for token: "+err.Error(), http.StatusInternalServerError)
 		return

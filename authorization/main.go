@@ -170,8 +170,9 @@ func auth(w http.ResponseWriter, req *http.Request) {
 
 	// CookieにセッションIDをセット
 	cookie := &http.Cookie{
-		Name:  "session",
-		Value: sessionId,
+		Name:     "session",
+		Value:    sessionId,
+		SameSite: http.SameSiteLaxMode,
 	}
 	http.SetCookie(w, cookie)
 
@@ -215,8 +216,13 @@ func authCheck(w http.ResponseWriter, req *http.Request) {
 	if loginUser != user.Name || password != user.Password {
 		w.Write([]byte("login failed"))
 	} else {
-
-		cookie, _ := req.Cookie("session")
+		cookie, err := req.Cookie("session")
+		if err != nil {
+			slog.Error(fmt.Sprintf("Failed to get session cookie: %v", err))
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte("session cookie is not found"))
+			return
+		}
 		http.SetCookie(w, cookie)
 
 		v := sessionList[cookie.Value]
@@ -272,7 +278,13 @@ var TokenCodeList = make(map[string]types.TokenCode)
 // トークンを発行するエンドポイント
 func token(w http.ResponseWriter, req *http.Request) {
 
-	cookie, _ := req.Cookie("session")
+	cookie, err := req.Cookie("session")
+	if err != nil {
+		slog.Error(fmt.Sprintf("Failed to get session cookie: %v", err))
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("session cookie is not found"))
+		return
+	}
 	req.ParseForm()
 	query := req.Form
 
@@ -325,12 +337,12 @@ func token(w http.ResponseWriter, req *http.Request) {
 		w.Write([]byte("invalid_request. auth code time limit is expire.\n"))
 	}
 
-	// clientシークレットの確認
-	if clientInfo.Secret != query.Get("client_secret") {
-		slog.Error("client_secret is not match.")
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("invalid_request. client_secret is not match.\n"))
-	}
+	// // clientシークレットの確認
+	// if clientInfo.Secret != query.Get("client_secret") {
+	// 	slog.Error("client_secret is not match.")
+	// 	w.WriteHeader(http.StatusBadRequest)
+	// 	w.Write([]byte("invalid_request. client_secret is not match.\n"))
+	// }
 
 	// PKCEのチェック
 	// clientから送られてきたverifyをsh256で計算&base64urlエンコードしてから
