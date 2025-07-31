@@ -150,10 +150,10 @@ func auth(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	// レスポンスタイプはいったん認可コードだけをサポート
-	if query.Get("response_type") != "code" {
-		slog.Error(fmt.Sprintf("want: code, got: %s", query.Get("response_type")))
+	if query.Get("response_type") != "code id_token" {
+		slog.Error(fmt.Sprintf("want: code id_token, got: %s", query.Get("response_type")))
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("only support code"))
+		w.Write([]byte("only support code id_token"))
 		return
 	}
 	sessionId := uuid.New().String()
