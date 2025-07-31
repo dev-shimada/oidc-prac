@@ -114,6 +114,7 @@ func wellKnownOpenIdConfiguration(w http.ResponseWriter, req *http.Request) {
 		TokenEndpoint:                    "http://localhost:8081/token",
 		UserinfoEndpoint:                 "http://localhost:8081/userinfo",
 		JwksUri:                          "http://localhost:8081/certs",
+		ResponseTypesSupported:           []string{"code id_token"},
 		ScopesSupported:                  []string{"openid", "profile", "email", "address", "phone"},
 		SubjectTypesSupported:            []string{"public"},
 		IdTokenSigningAlgValuesSupported: []string{"RS256"},
