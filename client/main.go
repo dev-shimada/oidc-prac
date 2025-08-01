@@ -22,7 +22,7 @@ var (
 
 func main() {
 	var err error
-	provider, err = oidc.NewProvider(ctx, "http://localhost:8081")
+	provider, err = oidc.NewProvider(ctx, "http://localhost:49151")
 	if err != nil {
 		slog.Error(fmt.Sprintf("Failed to create OIDC provider: %v", err))
 		return
@@ -31,7 +31,7 @@ func main() {
 		ClientID:     "1234",
 		ClientSecret: "secret",
 		Endpoint:     provider.Endpoint(),
-		RedirectURL:  "http://localhost:8080/callback",
+		RedirectURL:  "http://localhost:49150/callback",
 		Scopes:       []string{oidc.ScopeOpenID},
 	}
 
@@ -47,11 +47,11 @@ func main() {
 	// defer stop()
 
 	srv := &http.Server{
-		Addr:    ":8080",
+		Addr:    ":49150",
 		Handler: mux,
 	}
 
-	slog.Info("Server is running at :8080 Press CTRL-C to exit.")
+	slog.Info("Server is running at :49150 Press CTRL-C to exit.")
 	go srv.ListenAndServe()
 
 	<-srvCtx.Done()

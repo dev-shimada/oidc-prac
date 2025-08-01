@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/dev-shimada/oidc-prac/authorization/internal/client_assertion"
 	"github.com/dev-shimada/oidc-prac/authorization/internal/jwt"
 	"github.com/dev-shimada/oidc-prac/authorization/internal/types"
 	"github.com/google/uuid"
@@ -29,9 +30,9 @@ const (
 var clientInfo = types.Client{
 	Id:                  "1234",
 	Name:                "test",
-	RedirectURL:         "http://localhost:8080/callback",
+	RedirectURL:         "http://localhost:49150/callback",
 	Secret:              "secret",
-	ClientAssertionType: []types.ClientAssertionType[types.ClientAssertionTypeNone]{types.ClientAssertionTypeNone{}},
+	ClientAssertionType: []types.ClientAssertionType[client_assertion.ClientAssertionTypeNone]{client_assertion.ClientAssertionTypeNone{}},
 }
 
 func main() {
@@ -51,11 +52,11 @@ func main() {
 	// defer stop()
 
 	srv := &http.Server{
-		Addr:    ":8081",
+		Addr:    ":49151",
 		Handler: mux,
 	}
 
-	slog.Info("Server is running at :8081 Press CTRL-C to exit.")
+	slog.Info("Server is running at :49151 Press CTRL-C to exit.")
 	go srv.ListenAndServe()
 
 	<-ctx.Done()
@@ -110,11 +111,11 @@ func wellKnownOpenIdConfiguration(w http.ResponseWriter, req *http.Request) {
 		OpPolicyUri                                string   `json:"op_policy_uri,omitempty"`
 		OpTosUri                                   string   `json:"op_tos_uri,omitempty"`
 	}{
-		Issuer:                           "http://localhost:8081",
-		AuthorizationEndpoint:            "http://localhost:8081/auth",
-		TokenEndpoint:                    "http://localhost:8081/token",
-		UserinfoEndpoint:                 "http://localhost:8081/userinfo",
-		JwksUri:                          "http://localhost:8081/certs",
+		Issuer:                           "http://localhost:49151",
+		AuthorizationEndpoint:            "http://localhost:49151/auth",
+		TokenEndpoint:                    "http://localhost:49151/token",
+		UserinfoEndpoint:                 "http://localhost:49151/userinfo",
+		JwksUri:                          "http://localhost:49151/certs",
 		ResponseTypesSupported:           []string{"code id_token"},
 		ScopesSupported:                  []string{"openid", "profile", "email", "address", "phone"},
 		SubjectTypesSupported:            []string{"public"},
@@ -151,7 +152,7 @@ func auth(w http.ResponseWriter, req *http.Request) {
 		w.Write([]byte("client_id is not match"))
 		return
 	}
-	// レスポンスタイプはいったん認可コードだけをサポート
+	// レスポンスタイプはハイブリッドフローだけをサポート
 	if query.Get("response_type") != "code id_token" {
 		slog.Error(fmt.Sprintf("want: code id_token, got: %s", query.Get("response_type")))
 		w.WriteHeader(http.StatusBadRequest)
@@ -174,7 +175,7 @@ func auth(w http.ResponseWriter, req *http.Request) {
 	cookie := &http.Cookie{
 		Name:     "session",
 		Value:    sessionId,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: http.SameSiteNoneMode,
 	}
 	http.SetCookie(w, cookie)
 
@@ -216,6 +217,7 @@ func authCheck(w http.ResponseWriter, req *http.Request) {
 	password := req.FormValue("password")
 
 	if loginUser != user.Name || password != user.Password {
+		slog.Error(fmt.Sprintf("login failed: %s, %s", loginUser, password))
 		w.Write([]byte("login failed"))
 	} else {
 		cookie, err := req.Cookie("session")

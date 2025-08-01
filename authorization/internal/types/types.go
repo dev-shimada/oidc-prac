@@ -1,5 +1,7 @@
 package types
 
+import "github.com/dev-shimada/oidc-prac/authorization/internal/client_assertion"
+
 type Session struct {
 	Client                string
 	State                 string
@@ -13,43 +15,7 @@ type Session struct {
 	// oidc bool
 }
 
-type ClientAssertionTypeNone struct{}
-type ClientAssertionTypeClientSecretBasic struct{}
-type ClientAssertionTypeClientSecretPost struct{}
-type ClientAssertionTypeClientSecretJwt struct{}
-type ClientAssertionTypePrivateKeyJwt struct{}
-type ClientAssertionTypeTlsClientAuth struct{}
-type ClientAssertionTypeSelfSignedTlsClientAuth struct{}
-
-func (c ClientAssertionTypeNone) Check() bool {
-	return true
-}
-func (c ClientAssertionTypeClientSecretBasic) Check() bool {
-	// TODO: Implement check logic for ClientSecretBasic
-	return false
-}
-func (c ClientAssertionTypeClientSecretPost) Check() bool {
-	// TODO: Implement check logic for ClientSecretPost
-	return false
-}
-func (c ClientAssertionTypeClientSecretJwt) Check() bool {
-	// TODO: Implement check logic for ClientSecretJwt
-	return false
-}
-func (c ClientAssertionTypePrivateKeyJwt) Check() bool {
-	// TODO: Implement check logic for PrivateKeyJwt
-	return false
-}
-func (c ClientAssertionTypeSelfSignedTlsClientAuth) Check() bool {
-	// TODO: Implement check logic for SelfSignedTlsClientAuth
-	return false
-}
-func (c ClientAssertionTypeTlsClientAuth) Check() bool {
-	// TODO: Implement check logic for TlsClientAuth
-	return false
-}
-
-type ClientAssertionType[T ClientAssertionTypeNone | ClientAssertionTypeClientSecretBasic | ClientAssertionTypeClientSecretPost | ClientAssertionTypeSelfSignedTlsClientAuth | ClientAssertionTypeClientSecretJwt | ClientAssertionTypePrivateKeyJwt | ClientAssertionTypeTlsClientAuth] interface {
+type ClientAssertionType[T client_assertion.ClientAssertionTypeNone | client_assertion.ClientAssertionTypeClientSecretBasic | client_assertion.ClientAssertionTypeClientSecretPost | client_assertion.ClientAssertionTypeSelfSignedTlsClientAuth | client_assertion.ClientAssertionTypeClientSecretJwt | client_assertion.ClientAssertionTypePrivateKeyJwt | client_assertion.ClientAssertionTypeTlsClientAuth] interface {
 	Check() bool
 }
 
@@ -58,7 +24,7 @@ type Client struct {
 	Name                string
 	RedirectURL         string
 	Secret              string
-	ClientAssertionType []ClientAssertionType[ClientAssertionTypeNone]
+	ClientAssertionType []ClientAssertionType[client_assertion.ClientAssertionTypeNone]
 }
 
 type User struct {
