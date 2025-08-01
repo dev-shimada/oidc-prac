@@ -27,10 +27,11 @@ const (
 )
 
 var clientInfo = types.Client{
-	Id:          "1234",
-	Name:        "test",
-	RedirectURL: "http://localhost:8080/callback",
-	Secret:      "secret",
+	Id:                  "1234",
+	Name:                "test",
+	RedirectURL:         "http://localhost:8080/callback",
+	Secret:              "secret",
+	ClientAssertionType: []types.ClientAssertionType[types.ClientAssertionTypeNone]{types.ClientAssertionTypeNone{}},
 }
 
 func main() {
@@ -336,6 +337,16 @@ func token(w http.ResponseWriter, req *http.Request) {
 		slog.Error("authcode expire")
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("invalid_request. auth code time limit is expire.\n"))
+	}
+
+	for _, v := range clientInfo.ClientAssertionType {
+		if !v.Check() {
+			// クライアント認証のチェック
+			slog.Error("client assertion type is not match")
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte("invalid_request. client assertion type is not match.\n"))
+			return
+		}
 	}
 
 	// // clientシークレットの確認

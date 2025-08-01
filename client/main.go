@@ -82,6 +82,7 @@ func login(w http.ResponseWriter, req *http.Request) {
 		"state",
 		oauth2.S256ChallengeOption(generateCodeVerifier()),
 		oauth2.SetAuthURLParam("client_id", config.ClientID),
+		oauth2.SetAuthURLParam("response_type", "code id_token"),
 	)
 	slog.Info("Redirecting to OIDC provider for login", "endpoint", endpoint)
 	http.Redirect(w, req, endpoint, http.StatusFound)
