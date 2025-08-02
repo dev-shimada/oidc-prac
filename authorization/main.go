@@ -174,8 +174,13 @@ func auth(w http.ResponseWriter, req *http.Request) {
 	// CookieにセッションIDをセット
 	cookie := &http.Cookie{
 		Name:     "session",
+		Path:     "/",
 		Value:    sessionId,
-		SameSite: http.SameSiteNoneMode,
+		HttpOnly: true,
+		// Secure:   req.TLS != nil,
+		Expires:  time.Now().Add(5 * time.Minute),
+		Secure:   false,
+		SameSite: http.SameSiteLaxMode,
 	}
 	http.SetCookie(w, cookie)
 
@@ -195,7 +200,6 @@ func auth(w http.ResponseWriter, req *http.Request) {
 		slog.Error(fmt.Sprintf("Failed to execute login template: %v", err))
 	}
 	slog.Info("return login page...")
-
 }
 
 var user = types.User{
@@ -227,7 +231,6 @@ func authCheck(w http.ResponseWriter, req *http.Request) {
 			w.Write([]byte("session cookie is not found"))
 			return
 		}
-		http.SetCookie(w, cookie)
 
 		v := sessionList[cookie.Value]
 
@@ -238,6 +241,7 @@ func authCheck(w http.ResponseWriter, req *http.Request) {
 			Scopes:       v.Scopes,
 			Redirect_uri: v.RedirectUri,
 			Expires_at:   time.Now().Unix() + 300,
+			SessionId:    cookie.Value,
 		}
 		// 認可コードを保存
 		AuthCodeList[authCodeString] = authData
@@ -245,8 +249,7 @@ func authCheck(w http.ResponseWriter, req *http.Request) {
 		slog.Info("auth code accepted", "authCode", authCodeString)
 
 		location := fmt.Sprintf("%s?code=%s&state=%s", v.RedirectUri, authCodeString, v.State)
-		w.Header().Add("Location", location)
-		w.WriteHeader(302)
+		http.Redirect(w, req, location, http.StatusFound)
 	}
 }
 
@@ -281,14 +284,6 @@ var TokenCodeList = make(map[string]types.TokenCode)
 
 // トークンを発行するエンドポイント
 func token(w http.ResponseWriter, req *http.Request) {
-
-	cookie, err := req.Cookie("session")
-	if err != nil {
-		slog.Error(fmt.Sprintf("Failed to get session cookie: %v", err))
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("session cookie is not found"))
-		return
-	}
 	req.ParseForm()
 	query := req.Form
 
@@ -361,7 +356,7 @@ func token(w http.ResponseWriter, req *http.Request) {
 	// PKCEのチェック
 	// clientから送られてきたverifyをsh256で計算&base64urlエンコードしてから
 	// 認可リクエスト時に送られてきてセッションに保存しておいたchallengeと一致するか確認
-	session := sessionList[cookie.Value]
+	session := sessionList[AuthCodeList[query.Get("code")].SessionId]
 	if session.Code_challenge != base64URLEncode(query.Get("code_verifier"), CodeChallengeS256) {
 		slog.Error(fmt.Sprintf("PKCE verification failed: %s, %s", session.Code_challenge, base64URLEncode(query.Get("code_verifier"), CodeChallengeS256)))
 		w.WriteHeader(http.StatusBadRequest)

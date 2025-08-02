@@ -44,6 +44,7 @@ type AuthCode struct {
 	Scopes       string
 	Redirect_uri string
 	Expires_at   int64
+	SessionId    string
 }
 
 type TokenCode struct {
