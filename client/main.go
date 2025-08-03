@@ -77,10 +77,13 @@ func generateCodeVerifier() string {
 	return string(b)
 }
 
+var codeVerifier string
+
 func login(w http.ResponseWriter, req *http.Request) {
+	codeVerifier = generateCodeVerifier()
 	endpoint := config.AuthCodeURL(
 		"state",
-		oauth2.S256ChallengeOption(generateCodeVerifier()),
+		oauth2.S256ChallengeOption(codeVerifier),
 		oauth2.SetAuthURLParam("client_id", config.ClientID),
 		oauth2.SetAuthURLParam("response_type", "code id_token"),
 	)
@@ -95,7 +98,7 @@ func callback(w http.ResponseWriter, req *http.Request) {
 		req.FormValue("code"),
 		oauth2.SetAuthURLParam("client_id", config.ClientID),
 		// oauth2.SetAuthURLParam("client_secret", config.ClientSecret),
-		oauth2.SetAuthURLParam("code_verifier", generateCodeVerifier()),
+		oauth2.SetAuthURLParam("code_verifier", codeVerifier),
 	)
 	if err != nil {
 		http.Error(w, "Failed to exchange code for token: "+err.Error(), http.StatusInternalServerError)
