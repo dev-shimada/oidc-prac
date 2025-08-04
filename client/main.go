@@ -101,19 +101,23 @@ func callback(w http.ResponseWriter, req *http.Request) {
 		oauth2.SetAuthURLParam("code_verifier", codeVerifier),
 	)
 	if err != nil {
+		slog.Error("Failed to exchange code for token", "error", err)
 		http.Error(w, "Failed to exchange code for token: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	if token == nil {
+		slog.Error("Token is nil")
 		http.Error(w, "Token is nil", http.StatusInternalServerError)
 		return
 	}
 	if !token.Valid() {
+		slog.Error("Token is invalid", "token", token)
 		http.Error(w, "Token is invalid", http.StatusInternalServerError)
 		return
 	}
 	slog.Info("Token is valid", "token", token)
 
+	fmt.Println("id_token:", token.Extra("id_token"))
 	idToken := token.Extra("id_token").(string)
 	if idToken == "" {
 		http.Error(w, "ID Token is empty", http.StatusInternalServerError)

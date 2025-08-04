@@ -178,8 +178,8 @@ func auth(w http.ResponseWriter, req *http.Request) {
 		Value:    sessionId,
 		HttpOnly: true,
 		// Secure:   req.TLS != nil,
-		Expires:  time.Now().Add(5 * time.Minute),
 		Secure:   false,
+		Expires:  time.Now().Add(5 * time.Minute),
 		SameSite: http.SameSiteLaxMode,
 	}
 	http.SetCookie(w, cookie)
@@ -247,8 +247,9 @@ func authCheck(w http.ResponseWriter, req *http.Request) {
 		AuthCodeList[authCodeString] = authData
 
 		slog.Info("auth code accepted", "authCode", authCodeString)
+		idToken := "fake_id_token"
 
-		location := fmt.Sprintf("%s?code=%s&state=%s", v.RedirectUri, authCodeString, v.State)
+		location := fmt.Sprintf("%s?code=%s&id_token=%s&state=%s", v.RedirectUri, authCodeString, idToken, v.State)
 		http.Redirect(w, req, location, http.StatusFound)
 	}
 }
@@ -380,6 +381,7 @@ func token(w http.ResponseWriter, req *http.Request) {
 		AccessToken: tokenString,
 		TokenType:   "Bearer",
 		ExpiresIn:   expireTime,
+		IdToken:     "fake_id_token",
 	}
 	resp, err := json.Marshal(tokenResp)
 	if err != nil {
