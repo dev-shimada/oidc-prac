@@ -247,7 +247,21 @@ func authCheck(w http.ResponseWriter, req *http.Request) {
 		AuthCodeList[authCodeString] = authData
 
 		slog.Info("auth code accepted", "authCode", authCodeString)
-		idToken := "fake_id_token"
+
+		jws := &jwt.JWS{
+			Header: types.IdTokenHeader{
+				Alg: "RS256",
+				Typ: "JWT",
+			},
+			Payload: types.JWT{
+				Iss: "http://localhost:49151",
+				Sub: v.Client,
+				Aud: "1234",
+				Exp: time.Now().Add(ACCESS_TOKEN_DURATION * time.Second),
+				Iat: time.Now(),
+			},
+		}
+		idToken, _ := jws.Make()
 
 		location := fmt.Sprintf("%s?code=%s&id_token=%s&state=%s", v.RedirectUri, authCodeString, idToken, v.State)
 		http.Redirect(w, req, location, http.StatusFound)
