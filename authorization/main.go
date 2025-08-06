@@ -248,22 +248,29 @@ func authCheck(w http.ResponseWriter, req *http.Request) {
 
 		slog.Info("auth code accepted", "authCode", authCodeString)
 
+		d := sha256.Sum256([]byte(authCodeString))
+		digest := d[:]
+		leftHalf := digest[:len(digest)/2]
+		hashClaim := base64.RawURLEncoding.EncodeToString(leftHalf)
+
 		jws := &jwt.JWS{
 			Header: types.IdTokenHeader{
 				Alg: "RS256",
 				Typ: "JWT",
 			},
 			Payload: types.JWT{
-				Iss: "http://localhost:49151",
-				Sub: v.Client,
-				Aud: "1234",
-				Exp: time.Now().Add(ACCESS_TOKEN_DURATION * time.Second),
-				Iat: time.Now(),
+				Iss:   "http://localhost:49151",
+				Sub:   v.Client,
+				Aud:   "1234",
+				Exp:   time.Now().Add(ACCESS_TOKEN_DURATION * time.Second),
+				Iat:   time.Now(),
+				CHash: hashClaim,
 			},
 		}
 		idToken, _ := jws.Make()
 
 		location := fmt.Sprintf("%s?code=%s&id_token=%s&state=%s", v.RedirectUri, authCodeString, idToken, v.State)
+		slog.Info("redirect to client", "location", location)
 		http.Redirect(w, req, location, http.StatusFound)
 	}
 }
@@ -391,11 +398,32 @@ func token(w http.ResponseWriter, req *http.Request) {
 	// 認可コードを削除
 	delete(AuthCodeList, query.Get("code"))
 
+	d := sha256.Sum256([]byte(tokenString))
+	digest := d[:]
+	leftHalf := digest[:len(digest)/2]
+	hashClaim := base64.RawURLEncoding.EncodeToString(leftHalf)
+
+	jws := &jwt.JWS{
+		Header: types.IdTokenHeader{
+			Alg: "RS256",
+			Typ: "JWT",
+		},
+		Payload: types.JWT{
+			Iss:    "http://localhost:49151",
+			Sub:    v.ClientId,
+			Aud:    "1234",
+			Exp:    time.Now().Add(ACCESS_TOKEN_DURATION * time.Second),
+			Iat:    time.Now(),
+			AtHash: hashClaim,
+		},
+	}
+	idToken, _ := jws.Make()
+
 	tokenResp := types.TokenResponse{
 		AccessToken: tokenString,
 		TokenType:   "Bearer",
 		ExpiresIn:   expireTime,
-		IdToken:     "fake_id_token",
+		IdToken:     idToken,
 	}
 	resp, err := json.Marshal(tokenResp)
 	if err != nil {

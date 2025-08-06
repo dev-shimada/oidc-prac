@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"log/slog"
 	"os"
 
 	"github.com/dev-shimada/oidc-prac/authorization/internal/types"
@@ -42,21 +43,54 @@ type JWS struct {
 }
 
 func (j *JWS) Make() (string, error) {
-	HeaderJson, _ := json.Marshal(j.Header)
+	HeaderJson, err := json.Marshal(j.Header)
+	if err != nil {
+		slog.Error("failed to marshal header", "error", err)
+		return "", fmt.Errorf("failed to marshal header: %w", err)
+	}
 	headerBase64 := base64.StdEncoding.EncodeToString(HeaderJson)
-	payloadJson, _ := json.Marshal(j.Payload)
+	payloadJson, err := json.Marshal(j.Payload)
+	if err != nil {
+		slog.Error("failed to marshal payload", "error", err)
+		return "", fmt.Errorf("failed to marshal payload: %w", err)
+	}
 	payloadBase64 := base64.StdEncoding.EncodeToString(payloadJson)
 
-	data, _ := os.ReadFile("jwt-private.pem")
+	data, err := os.ReadFile("jwt-private.pem")
+	if err != nil {
+		slog.Error("failed to read private key file", "error", err)
+		return "", fmt.Errorf("failed to read private key file: %w", err)
+	}
 	block, _ := pem.Decode([]byte(data))
-	privateKey, _ := x509.ParsePKCS1PrivateKey(block.Bytes)
+	if block == nil || block.Type != "PRIVATE KEY" {
+		slog.Error("failed to decode PEM block", "error", "invalid PEM format")
+		return "", fmt.Errorf("failed to decode PEM block: invalid PEM format")
+	}
+	privateKey, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	if err != nil {
+		slog.Error("failed to parse private key", "error", err)
+		return "", fmt.Errorf("failed to parse private key: %w", err)
+	}
 	var alg crypto.Hash
 	switch j.Header.Alg {
 	case "RS256":
 		alg = crypto.SHA256
 	default:
 	}
-	signature, _ := rsa.SignPKCS1v15(rand.Reader, privateKey, alg, []byte(fmt.Sprintf("%s.%s", headerBase64, payloadBase64)))
+
+	signingInput := fmt.Sprintf("%s.%s", headerBase64, payloadBase64)
+	hasher := crypto.SHA256.New()
+	_, err = hasher.Write([]byte(signingInput))
+	if err != nil {
+		slog.Error("failed to write to hasher", "error", err)
+		return "", fmt.Errorf("failed to write to hasher: %w", err)
+	}
+	hashed := hasher.Sum(nil)
+	signature, err := rsa.SignPKCS1v15(rand.Reader, privateKey.(*rsa.PrivateKey), alg, hashed)
+	if err != nil {
+		slog.Error("failed to sign data", "error", err)
+		return "", fmt.Errorf("failed to sign data: %w", err)
+	}
 	signatureBase64 := base64.StdEncoding.EncodeToString(signature)
 
 	// Set the signature in the JWS struct
