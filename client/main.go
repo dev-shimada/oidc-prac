@@ -139,5 +139,5 @@ func callback(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	b := make([]byte, 0, 1024)
-	w.Write(fmt.Appendf(b, "User Info: %v\n", userInfo))
+	w.Write(fmt.Appendf(b, "User Info: %+v\n", userInfo))
 }

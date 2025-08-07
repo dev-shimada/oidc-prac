@@ -210,7 +210,7 @@ var user = types.User{
 	Name_ja:     "徳川慶喜",
 	Given_name:  "慶喜",
 	Family_name: "徳川",
-	Locale:      "ja",
+	Locale:      "JP",
 }
 
 var AuthCodeList = make(map[string]types.AuthCode)
@@ -262,8 +262,8 @@ func authCheck(w http.ResponseWriter, req *http.Request) {
 				Iss:   "http://localhost:49151",
 				Sub:   v.Client,
 				Aud:   "1234",
-				Exp:   time.Now().Add(ACCESS_TOKEN_DURATION * time.Second),
-				Iat:   time.Now(),
+				Exp:   time.Now().Add(ACCESS_TOKEN_DURATION * time.Second).Unix(),
+				Iat:   time.Now().Unix(),
 				CHash: hashClaim,
 			},
 		}
@@ -412,8 +412,8 @@ func token(w http.ResponseWriter, req *http.Request) {
 			Iss:    "http://localhost:49151",
 			Sub:    v.ClientId,
 			Aud:    "1234",
-			Exp:    time.Now().Add(ACCESS_TOKEN_DURATION * time.Second),
-			Iat:    time.Now(),
+			Exp:    time.Now().Add(ACCESS_TOKEN_DURATION * time.Second).Unix(),
+			Iat:    time.Now().Unix(),
 			AtHash: hashClaim,
 		},
 	}
@@ -460,20 +460,24 @@ func userinfo(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// スコープが正しいか、openid profileで固定
-	if v.Scopes != "openid profile" {
+	// スコープが正しいか、openid profile email で固定
+	if v.Scopes != "openid profile email" {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("scope is not permit.\n"))
 		return
 	}
 
 	// ユーザ情報を返す
-	var m = map[string]interface{}{
-		"sub":         user.Sub,
-		"name":        user.Name_ja,
-		"given_name":  user.Given_name,
-		"family_name": user.Family_name,
-		"locale":      user.Locale,
+	var m = types.UserInfo{
+		UserInfoStandardClaims: types.UserInfoStandardClaims{
+			Sub:        user.Sub,
+			Name:       user.Name_ja,
+			GivenName:  user.Given_name,
+			FamilyName: user.Family_name,
+			Locale:     user.Locale,
+		},
+		Iss: "http://localhost:49151",
+		Aud: "1234",
 	}
 	buf, _ := json.MarshalIndent(m, "", "  ")
 	w.WriteHeader(http.StatusOK)

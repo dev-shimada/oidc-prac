@@ -48,13 +48,13 @@ func (j *JWS) Make() (string, error) {
 		slog.Error("failed to marshal header", "error", err)
 		return "", fmt.Errorf("failed to marshal header: %w", err)
 	}
-	headerBase64 := base64.StdEncoding.EncodeToString(HeaderJson)
+	headerBase64 := base64.URLEncoding.WithPadding(base64.NoPadding).EncodeToString(HeaderJson)
 	payloadJson, err := json.Marshal(j.Payload)
 	if err != nil {
 		slog.Error("failed to marshal payload", "error", err)
 		return "", fmt.Errorf("failed to marshal payload: %w", err)
 	}
-	payloadBase64 := base64.StdEncoding.EncodeToString(payloadJson)
+	payloadBase64 := base64.URLEncoding.WithPadding(base64.NoPadding).EncodeToString(payloadJson)
 
 	data, err := os.ReadFile("jwt-private.pem")
 	if err != nil {
@@ -91,7 +91,7 @@ func (j *JWS) Make() (string, error) {
 		slog.Error("failed to sign data", "error", err)
 		return "", fmt.Errorf("failed to sign data: %w", err)
 	}
-	signatureBase64 := base64.StdEncoding.EncodeToString(signature)
+	signatureBase64 := base64.URLEncoding.WithPadding(base64.NoPadding).EncodeToString(signature)
 
 	// Set the signature in the JWS struct
 	j.Signature = signatureBase64
