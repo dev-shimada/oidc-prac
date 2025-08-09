@@ -5,6 +5,7 @@ go 1.24.0
 require (
 	github.com/google/uuid v1.6.0
 	github.com/lestrrat-go/jwx v1.2.30
+	golang.org/x/exp v0.0.0-20250808145144-a408d31f581a
 )
 
 require (

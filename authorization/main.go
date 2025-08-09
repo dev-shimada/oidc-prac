@@ -18,6 +18,7 @@ import (
 	"github.com/dev-shimada/oidc-prac/authorization/internal/jwt"
 	"github.com/dev-shimada/oidc-prac/authorization/internal/types"
 	"github.com/google/uuid"
+	"golang.org/x/exp/slices"
 )
 
 const (
@@ -204,12 +205,12 @@ func auth(w http.ResponseWriter, req *http.Request) {
 
 var user = types.User{
 	Id:          1,
-	Name:        "name",
+	AccountName: "name",
 	Password:    "pw",
 	Sub:         "11111111",
-	Name_ja:     "徳川慶喜",
-	Given_name:  "慶喜",
-	Family_name: "徳川",
+	NameJa:      "徳川慶喜",
+	GivenName:   "慶喜",
+	FamilyName:  "徳川",
 	Locale:      "JP",
 }
 
@@ -220,7 +221,7 @@ func authCheck(w http.ResponseWriter, req *http.Request) {
 	loginUser := req.FormValue("username")
 	password := req.FormValue("password")
 
-	if loginUser != user.Name || password != user.Password {
+	if loginUser != user.AccountName || password != user.Password {
 		slog.Error(fmt.Sprintf("login failed: %s, %s", loginUser, password))
 		w.Write([]byte("login failed"))
 	} else {
@@ -460,25 +461,65 @@ func userinfo(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// スコープが正しいか、openid profile email で固定
-	if v.Scopes != "openid profile email" {
+	scopes := strings.Split(v.Scopes, " ")
+	// スコープが正しいか
+	if !slices.Contains(scopes, "openid") {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("scope is not permit.\n"))
+		w.Write([]byte("openid scope is required.\n"))
 		return
 	}
 
 	// ユーザ情報を返す
 	var m = types.UserInfo{
 		UserInfoStandardClaims: types.UserInfoStandardClaims{
-			Sub:        user.Sub,
-			Name:       user.Name_ja,
-			GivenName:  user.Given_name,
-			FamilyName: user.Family_name,
-			Locale:     user.Locale,
+			Sub: user.Sub,
 		},
 		Iss: "http://localhost:49151",
 		Aud: "1234",
 	}
+	if slices.Contains(scopes, "profile") {
+		m.UserInfoStandardClaimsProfile = types.UserInfoStandardClaimsProfile{
+			Name:              user.NameJa,
+			GivenName:         user.GivenName,
+			FamilyName:        user.FamilyName,
+			MiddleName:        user.MiddleName,
+			Nickname:          user.Nickname,
+			PreferredUsername: user.PreferredUsername,
+			Profile:           user.Profile,
+			Picture:           user.Picture,
+			Website:           user.Website,
+			Gender:            user.Gender,
+			Zoneinfo:          user.Zoneinfo,
+			Locale:            user.Locale,
+			UpdatedAt:         user.UpdatedAt,
+		}
+		if !user.Birthdate.IsZero() {
+			m.Birthdate = user.Birthdate.Format("2006-01-02")
+		}
+	}
+	if slices.Contains(scopes, "email") {
+		m.UserInfoStandardClaimsEmail = types.UserInfoStandardClaimsEmail{
+			Email:         user.Email,
+			EmailVerified: user.EmailVerified,
+		}
+	}
+	if slices.Contains(scopes, "phone") {
+		m.UserInfoStandardClaimsPhone = types.UserInfoStandardClaimsPhone{
+			PhoneNumber:         user.PhoneNumber,
+			PhoneNumberVerified: user.PhoneNumberVerified,
+		}
+	}
+	if slices.Contains(scopes, "address") {
+		m.Address = &types.UserInfoStandardClaimsAddress{
+			Formatted:     fmt.Sprintf("%s\n%s, %s %s\n%s", user.StreetAddress, user.Locality, user.Region, user.PostalCode, user.Country),
+			StreetAddress: user.StreetAddress,
+			Locality:      user.Locality,
+			Region:        user.Region,
+			PostalCode:    user.PostalCode,
+			Country:       user.Country,
+		}
+	}
+
 	buf, _ := json.MarshalIndent(m, "", "  ")
 	w.WriteHeader(http.StatusOK)
 	w.Write(buf)
