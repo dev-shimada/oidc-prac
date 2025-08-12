@@ -12,7 +12,6 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/dev-shimada/oidc-prac/authorization/internal/types"
 	"github.com/lestrrat-go/jwx/jwk"
 )
 
@@ -31,15 +30,6 @@ func MakeJWK() []byte {
 	}
 	buf, _ := json.MarshalIndent(jwk, "", "  ")
 	return buf
-}
-
-type IdTokenMaker[T JWS] interface {
-	Make(T) (string, error)
-}
-type JWS struct {
-	Header    types.IdTokenHeader `json:"header"`
-	Payload   types.JWT           `json:"payload"`
-	Signature string              `json:"signature"`
 }
 
 func (j *JWS) Make() (string, error) {
@@ -96,4 +86,8 @@ func (j *JWS) Make() (string, error) {
 	// Set the signature in the JWS struct
 	j.Signature = signatureBase64
 	return fmt.Sprintf("%s.%s.%s", headerBase64, payloadBase64, signatureBase64), nil
+}
+
+func (j *JWE) Make() (string, error) {
+	return "", fmt.Errorf("JWE Make method not implemented")
 }

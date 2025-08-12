@@ -22,8 +22,6 @@ import (
 )
 
 const (
-	//SCOPE                 = "readonly"
-	SCOPE                 = "https://www.googleapis.com/auth/photoslibrary.readonly"
 	AUTH_CODE_DURATION    = 300
 	ACCESS_TOKEN_DURATION = 3600
 )
@@ -241,7 +239,7 @@ func authCheck(w http.ResponseWriter, req *http.Request) {
 			ClientId:     v.Client,
 			Scopes:       v.Scopes,
 			Redirect_uri: v.RedirectUri,
-			Expires_at:   time.Now().Unix() + 300,
+			Expires_at:   time.Now().Add(AUTH_CODE_DURATION * time.Second).Unix(),
 			SessionId:    cookie.Value,
 		}
 		// 認可コードを保存
@@ -255,11 +253,11 @@ func authCheck(w http.ResponseWriter, req *http.Request) {
 		hashClaim := base64.RawURLEncoding.EncodeToString(leftHalf)
 
 		jws := &jwt.JWS{
-			Header: types.IdTokenHeader{
+			Header: jwt.IdTokenHeader{
 				Alg: "RS256",
 				Typ: "JWT",
 			},
-			Payload: types.JWT{
+			Payload: jwt.JWT{
 				Iss:   "http://localhost:49151",
 				Sub:   v.Client,
 				Aud:   "1234",
@@ -387,7 +385,7 @@ func token(w http.ResponseWriter, req *http.Request) {
 	}
 
 	tokenString := uuid.New().String()
-	expireTime := time.Now().Unix() + ACCESS_TOKEN_DURATION
+	expireTime := time.Now().Add(ACCESS_TOKEN_DURATION * time.Second).Unix()
 
 	tokenInfo := types.TokenCode{
 		User:       v.User,
@@ -405,11 +403,11 @@ func token(w http.ResponseWriter, req *http.Request) {
 	hashClaim := base64.RawURLEncoding.EncodeToString(leftHalf)
 
 	jws := &jwt.JWS{
-		Header: types.IdTokenHeader{
+		Header: jwt.IdTokenHeader{
 			Alg: "RS256",
 			Typ: "JWT",
 		},
-		Payload: types.JWT{
+		Payload: jwt.JWT{
 			Iss:    "http://localhost:49151",
 			Sub:    v.ClientId,
 			Aud:    "1234",
