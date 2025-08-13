@@ -88,6 +88,21 @@ func (j *JWS) Make() (string, error) {
 	return fmt.Sprintf("%s.%s.%s", headerBase64, payloadBase64, signatureBase64), nil
 }
 
+// func hs256(clientId, signingInput string) (string, error) {
+// 	sharedSecret, err := os.ReadFile(fmt.Sprintf("hs256/%s.key", clientId))
+// 	if err != nil {
+// 		slog.Error("failed to read private key file", "error", err)
+// 		return "", fmt.Errorf("failed to read private key file: %w", err)
+// 	}
+// 	h := hmac.New(sha256.New, sharedSecret)
+// 	h.Write([]byte(signingInput))
+// 	signature := h.Sum(nil)
+
+// 	signatureBase64 := base64.URLEncoding.WithPadding(base64.NoPadding).EncodeToString(signature)
+
+// 	return fmt.Sprintf("%s.%s", signingInput, signatureBase64), nil
+// }
+
 func (j *JWE) Make() (string, error) {
 	return "", fmt.Errorf("JWE Make method not implemented")
 }
