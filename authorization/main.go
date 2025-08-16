@@ -118,7 +118,7 @@ func wellKnownOpenIdConfiguration(w http.ResponseWriter, req *http.Request) {
 		ResponseTypesSupported:           []string{"code id_token"},
 		ScopesSupported:                  []string{"openid", "profile", "email", "address", "phone"},
 		SubjectTypesSupported:            []string{"public"},
-		IdTokenSigningAlgValuesSupported: []string{"RS256"},
+		IdTokenSigningAlgValuesSupported: []string{"HS256", "RS256"},
 	}
 	res, err := json.Marshal(config)
 	if err != nil {
