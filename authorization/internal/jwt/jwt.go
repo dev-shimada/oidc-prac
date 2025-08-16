@@ -23,9 +23,21 @@ func MakeJWK() []byte {
 	data, _ := os.ReadFile("jwt-public.pem")
 	keyset, _ := jwk.ParseKey(data, jwk.WithPEM(true))
 
-	keyset.Set(jwk.KeyIDKey, "12345678")
-	keyset.Set(jwk.AlgorithmKey, "RS256")
-	keyset.Set(jwk.KeyUsageKey, "sig")
+	err := keyset.Set(jwk.KeyIDKey, "12345678")
+	if err != nil {
+		slog.Error("failed to set key ID", "error", err)
+		return nil
+	}
+	err = keyset.Set(jwk.AlgorithmKey, "RS256")
+	if err != nil {
+		slog.Error("failed to set algorithm", "error", err)
+		return nil
+	}
+	err = keyset.Set(jwk.KeyUsageKey, "sig")
+	if err != nil {
+		slog.Error("failed to set key usage", "error", err)
+		return nil
+	}
 
 	jwk := map[string][]jwk.Key{
 		"keys": {keyset},

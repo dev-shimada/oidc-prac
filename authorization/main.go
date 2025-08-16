@@ -37,7 +37,7 @@ var clientInfo = types.Client{
 func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/hello", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("Hello, World!"))
+		_, _ = w.Write([]byte("Hello, World!"))
 	})
 	mux.HandleFunc("/.well-known/openid-configuration", wellKnownOpenIdConfiguration)
 	mux.HandleFunc("/auth", auth)
@@ -56,7 +56,7 @@ func main() {
 	}
 
 	slog.Info("Server is running at :49151 Press CTRL-C to exit.")
-	go srv.ListenAndServe()
+	go func() { _ = srv.ListenAndServe() }()
 
 	<-ctx.Done()
 
@@ -124,10 +124,15 @@ func wellKnownOpenIdConfiguration(w http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		slog.Error(fmt.Sprintf("json marshal err: %v", err))
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("internal server error"))
+		_, _ = w.Write([]byte("internal server error"))
 		return
 	}
-	w.Write(res)
+	_, err = w.Write(res)
+	if err != nil {
+		slog.Error(fmt.Sprintf("Failed to write response: %v", err))
+		http.Error(w, "Failed to write response: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
 
 var sessionList = make(map[string]types.Session)
@@ -140,7 +145,7 @@ func auth(w http.ResponseWriter, req *http.Request) {
 		if !query.Has(v) {
 			slog.Error(fmt.Sprintf("%s is missing", v))
 			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(fmt.Sprintf("invalid_request. %s is missing", v)))
+			_, _ = w.Write(fmt.Appendf(nil, "invalid_request. %s is missing", v))
 			return
 		}
 	}
@@ -148,14 +153,14 @@ func auth(w http.ResponseWriter, req *http.Request) {
 	if clientInfo.Id != query.Get("client_id") {
 		slog.Error(fmt.Sprintf("want: %s, got: %s", clientInfo.Id, query.Get("client_id")))
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("client_id is not match"))
+		_, _ = w.Write([]byte("client_id is not match"))
 		return
 	}
 	// レスポンスタイプはハイブリッドフローだけをサポート
 	if query.Get("response_type") != "code id_token" {
 		slog.Error(fmt.Sprintf("want: code id_token, got: %s", query.Get("response_type")))
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("only support code id_token"))
+		_, _ = w.Write([]byte("only support code id_token"))
 		return
 	}
 	sessionId := uuid.New().String()
@@ -221,13 +226,13 @@ func authCheck(w http.ResponseWriter, req *http.Request) {
 
 	if loginUser != user.AccountName || password != user.Password {
 		slog.Error(fmt.Sprintf("login failed: %s, %s", loginUser, password))
-		w.Write([]byte("login failed"))
+		_, _ = w.Write([]byte("login failed"))
 	} else {
 		cookie, err := req.Cookie("session")
 		if err != nil {
 			slog.Error(fmt.Sprintf("Failed to get session cookie: %v", err))
 			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte("session cookie is not found"))
+			_, _ = w.Write([]byte("session cookie is not found"))
 			return
 		}
 
@@ -305,7 +310,12 @@ var TokenCodeList = make(map[string]types.TokenCode)
 
 // トークンを発行するエンドポイント
 func token(w http.ResponseWriter, req *http.Request) {
-	req.ParseForm()
+	err := req.ParseForm()
+	if err != nil {
+		slog.Error(fmt.Sprintf("Failed to parse form: %v", err))
+		http.Error(w, "Failed to parse form: "+err.Error(), http.StatusBadRequest)
+		return
+	}
 	query := req.Form
 
 	requiredParameter := []string{"grant_type", "code", "client_id", "redirect_uri"}
@@ -315,7 +325,7 @@ func token(w http.ResponseWriter, req *http.Request) {
 			slog.Error(fmt.Sprintf("%s is missing", v))
 			w.WriteHeader(http.StatusBadRequest)
 			b := make([]byte, 0)
-			w.Write(fmt.Appendf(b, "invalid_request. %s is missing\n", v))
+			_, _ = w.Write(fmt.Appendf(b, "invalid_request. %s is missing\n", v))
 			return
 		}
 	}
@@ -323,7 +333,7 @@ func token(w http.ResponseWriter, req *http.Request) {
 	// 認可コードフローだけサポート
 	if query.Get("grant_type") != "authorization_code" {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("invalid_request. not support type.\n"))
+		_, _ = w.Write([]byte("invalid_request. not support type.\n"))
 	}
 
 	// 保存していた認可コードのデータを取得。なければエラーを返す
@@ -332,7 +342,7 @@ func token(w http.ResponseWriter, req *http.Request) {
 	if !ok {
 		slog.Error("auth code isn't exist")
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("no authrization code"))
+		_, _ = w.Write([]byte("no authrization code"))
 	}
 
 	// 認可リクエスト時のクライアントIDと比較
@@ -340,21 +350,21 @@ func token(w http.ResponseWriter, req *http.Request) {
 		slog.Error("client_id not match")
 		w.WriteHeader(http.StatusBadRequest)
 		// w.Write([]byte("invalid_request. client_id not match.\n"))
-		w.Write([]byte("client_id is not match"))
+		_, _ = w.Write([]byte("client_id is not match"))
 	}
 
 	// 認可リクエスト時のリダイレクトURIと比較
 	if v.Redirect_uri != query.Get("redirect_uri") {
 		slog.Error("redirect_uri not match")
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("invalid_request. redirect_uri not match.\n"))
+		_, _ = w.Write([]byte("invalid_request. redirect_uri not match.\n"))
 	}
 
 	// 認可コードの有効期限を確認
 	if v.Expires_at < time.Now().Unix() {
 		slog.Error("authcode expire")
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("invalid_request. auth code time limit is expire.\n"))
+		_, _ = w.Write([]byte("invalid_request. auth code time limit is expire.\n"))
 	}
 
 	for _, v := range clientInfo.ClientAssertionType {
@@ -362,7 +372,7 @@ func token(w http.ResponseWriter, req *http.Request) {
 			// クライアント認証のチェック
 			slog.Error("client assertion type is not match")
 			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte("invalid_request. client assertion type is not match.\n"))
+			_, _ = w.Write([]byte("invalid_request. client assertion type is not match.\n"))
 			return
 		}
 	}
@@ -381,7 +391,7 @@ func token(w http.ResponseWriter, req *http.Request) {
 	if session.Code_challenge != base64URLEncode(query.Get("code_verifier"), CodeChallengeS256) {
 		slog.Error(fmt.Sprintf("PKCE verification failed: %s, %s", session.Code_challenge, base64URLEncode(query.Get("code_verifier"), CodeChallengeS256)))
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("PKCE check is err..."))
+		_, _ = w.Write([]byte("PKCE check is err..."))
 	}
 
 	tokenString := uuid.New().String()
@@ -432,12 +442,22 @@ func token(w http.ResponseWriter, req *http.Request) {
 	slog.Info("token ok to client", "clientId", v.ClientId, "token", string(resp))
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write(resp)
+	_, err = w.Write(resp)
+	if err != nil {
+		slog.Error(fmt.Sprintf("Failed to write token response: %v", err))
+		http.Error(w, "Failed to write token response: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
 
 func certs(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(http.StatusOK)
-	w.Write(jwt.MakeJWK())
+	_, err := w.Write(jwt.MakeJWK())
+	if err != nil {
+		slog.Error(fmt.Sprintf("Failed to write JWK response: %v", err))
+		http.Error(w, "Failed to write JWK response: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
 
 func userinfo(w http.ResponseWriter, req *http.Request) {
@@ -448,14 +468,14 @@ func userinfo(w http.ResponseWriter, req *http.Request) {
 	v, ok := TokenCodeList[tmp[1]]
 	if !ok {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("token is wrong.\n"))
+		_, _ = w.Write([]byte("token is wrong.\n"))
 		return
 	}
 
 	// トークンの有効期限が切れてないか
 	if v.Expires_at < time.Now().Unix() {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("token is expire.\n"))
+		_, _ = w.Write([]byte("token is expire.\n"))
 		return
 	}
 
@@ -463,7 +483,7 @@ func userinfo(w http.ResponseWriter, req *http.Request) {
 	// スコープが正しいか
 	if !slices.Contains(scopes, "openid") {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("openid scope is required.\n"))
+		_, _ = w.Write([]byte("openid scope is required.\n"))
 		return
 	}
 
@@ -520,5 +540,10 @@ func userinfo(w http.ResponseWriter, req *http.Request) {
 
 	buf, _ := json.MarshalIndent(m, "", "  ")
 	w.WriteHeader(http.StatusOK)
-	w.Write(buf)
+	_, err := w.Write(buf)
+	if err != nil {
+		slog.Error(fmt.Sprintf("Failed to write user info response: %v", err))
+		http.Error(w, "Failed to write user info response: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
