@@ -2,8 +2,6 @@ package types
 
 import (
 	"time"
-
-	"github.com/dev-shimada/oidc-prac/authorization/internal/client_assertion"
 )
 
 type Session struct {
@@ -19,8 +17,8 @@ type Session struct {
 	// oidc bool
 }
 
-type ClientAssertionType[T client_assertion.ClientAssertionTypeNone | client_assertion.ClientAssertionTypeClientSecretBasic | client_assertion.ClientAssertionTypeClientSecretPost | client_assertion.ClientAssertionTypeSelfSignedTlsClientAuth | client_assertion.ClientAssertionTypeClientSecretJwt | client_assertion.ClientAssertionTypePrivateKeyJwt | client_assertion.ClientAssertionTypeTlsClientAuth] interface {
-	Check() bool
+type ClientAssertionType[T ClientAssertionTypeNone | ClientAssertionTypeClientSecretBasic | ClientAssertionTypeClientSecretPost | ClientAssertionTypeSelfSignedTlsClientAuth | ClientAssertionTypeClientSecretJwt | ClientAssertionTypePrivateKeyJwt | ClientAssertionTypeTlsClientAuth] interface {
+	Check(client Client) bool
 }
 
 type Client struct {
@@ -28,7 +26,7 @@ type Client struct {
 	Name                string
 	RedirectURL         string
 	Secret              string
-	ClientAssertionType []ClientAssertionType[client_assertion.ClientAssertionTypeNone]
+	ClientAssertionType []ClientAssertionType[ClientAssertionTypeNone]
 }
 
 type User struct {

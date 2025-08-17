@@ -14,7 +14,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/dev-shimada/oidc-prac/authorization/internal/client_assertion"
 	"github.com/dev-shimada/oidc-prac/authorization/internal/jwt"
 	"github.com/dev-shimada/oidc-prac/authorization/internal/types"
 	"github.com/google/uuid"
@@ -31,7 +30,7 @@ var clientInfo = types.Client{
 	Name:                "test",
 	RedirectURL:         "http://localhost:49150/callback",
 	Secret:              "secret",
-	ClientAssertionType: []types.ClientAssertionType[client_assertion.ClientAssertionTypeNone]{client_assertion.ClientAssertionTypeNone{}},
+	ClientAssertionType: []types.ClientAssertionType[types.ClientAssertionTypeNone]{types.ClientAssertionTypeNone{}},
 }
 
 func main() {
@@ -368,7 +367,7 @@ func token(w http.ResponseWriter, req *http.Request) {
 	}
 
 	for _, v := range clientInfo.ClientAssertionType {
-		if !v.Check() {
+		if !v.Check(clientInfo) {
 			// クライアント認証のチェック
 			slog.Error("client assertion type is not match")
 			w.WriteHeader(http.StatusBadRequest)
