@@ -25,12 +25,12 @@ const (
 	ACCESS_TOKEN_DURATION = 3600
 )
 
-var clientInfo = types.Client{
-	Id:                  "1234",
-	Name:                "test",
-	RedirectURL:         "http://localhost:49150/callback",
-	Secret:              "secret",
-	ClientAssertionType: []types.ClientAssertionType[types.ClientAssertionTypeNone]{types.ClientAssertionTypeNone{}},
+var clients = map[string]types.Client{
+	"1234": { // Client ID
+		Name:                "test",
+		RedirectURL:         "http://localhost:49150/callback",
+		ClientAssertionType: []types.ClientAssertionType[types.ClientAssertionTypeNone]{types.ClientAssertionTypeClientSecretBasic{Secret: "secret"}},
+	},
 }
 
 func main() {
@@ -149,12 +149,13 @@ func auth(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 	// client id の一致確認
-	if clientInfo.Id != query.Get("client_id") {
-		slog.Error(fmt.Sprintf("want: %s, got: %s", clientInfo.Id, query.Get("client_id")))
+	if _, ok := clients[query.Get("client_id")]; !ok {
+		slog.Error(fmt.Sprintf("client_id %s is not found", query.Get("client_id")))
 		w.WriteHeader(http.StatusBadRequest)
-		_, _ = w.Write([]byte("client_id is not match"))
+		_, _ = w.Write([]byte("invalid_request. client_id is not found.\n"))
 		return
 	}
+
 	// レスポンスタイプはハイブリッドフローだけをサポート
 	if query.Get("response_type") != "code id_token" {
 		slog.Error(fmt.Sprintf("want: code id_token, got: %s", query.Get("response_type")))
@@ -366,8 +367,19 @@ func token(w http.ResponseWriter, req *http.Request) {
 		_, _ = w.Write([]byte("invalid_request. auth code time limit is expire.\n"))
 	}
 
-	for _, v := range clientInfo.ClientAssertionType {
-		if !v.Check(clientInfo) {
+	var client types.Client
+	// client id の一致確認
+	if c, ok := clients[query.Get("client_id")]; !ok {
+		slog.Error(fmt.Sprintf("client_id %s is not found", query.Get("client_id")))
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte("invalid_request. client_id is not found.\n"))
+		return
+	} else {
+		client = c
+	}
+
+	for _, v := range client.ClientAssertionType {
+		if !v.Check(*req) {
 			// クライアント認証のチェック
 			slog.Error("client assertion type is not match")
 			w.WriteHeader(http.StatusBadRequest)
@@ -377,7 +389,7 @@ func token(w http.ResponseWriter, req *http.Request) {
 	}
 
 	// // clientシークレットの確認
-	// if clientInfo.Secret != query.Get("client_secret") {
+	// if clients.Secret != query.Get("client_secret") {
 	// 	slog.Error("client_secret is not match.")
 	// 	w.WriteHeader(http.StatusBadRequest)
 	// 	w.Write([]byte("invalid_request. client_secret is not match.\n"))

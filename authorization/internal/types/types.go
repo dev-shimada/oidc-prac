@@ -1,6 +1,7 @@
 package types
 
 import (
+	"net/http"
 	"time"
 )
 
@@ -18,7 +19,7 @@ type Session struct {
 }
 
 type ClientAssertionType[T ClientAssertionTypeNone | ClientAssertionTypeClientSecretBasic | ClientAssertionTypeClientSecretPost | ClientAssertionTypeSelfSignedTlsClientAuth | ClientAssertionTypeClientSecretJwt | ClientAssertionTypePrivateKeyJwt | ClientAssertionTypeTlsClientAuth] interface {
-	Check(client Client) bool
+	Check(req http.Request) bool
 }
 
 type Client struct {

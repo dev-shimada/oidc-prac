@@ -2,12 +2,13 @@ package types
 
 import (
 	"encoding/base64"
+	"net/http"
 	"strings"
 )
 
 type ClientAssertionTypeNone struct{}
 type ClientAssertionTypeClientSecretBasic struct {
-	Authorization string
+	Secret string
 }
 type ClientAssertionTypeClientSecretPost struct{}
 type ClientAssertionTypeClientSecretJwt struct{}
@@ -15,54 +16,40 @@ type ClientAssertionTypePrivateKeyJwt struct{}
 type ClientAssertionTypeTlsClientAuth struct{}
 type ClientAssertionTypeSelfSignedTlsClientAuth struct{}
 
-func (c ClientAssertionTypeNone) Check(client Client) bool {
+func (c ClientAssertionTypeNone) Check(req http.Request) bool {
 	return true
 }
-func (c ClientAssertionTypeClientSecretBasic) Check(client Client) bool {
-	encoded := strings.TrimPrefix(c.Authorization, "Basic ")
-
+func (c ClientAssertionTypeClientSecretBasic) Check(req http.Request) bool {
+	authorization := req.Header.Get("Authorization")
+	encoded := strings.TrimPrefix(authorization, "Basic ")
 	decoded, err := base64.StdEncoding.DecodeString(encoded)
 	if err != nil {
 		return false
 	}
-
 	credentials := strings.SplitN(string(decoded), ":", 2)
 	if len(credentials) != 2 {
 		return false
 	}
-
-	clientID := credentials[0]
 	clientSecret := credentials[1]
-
-	// クライアント情報を確認
-	if clientID != client.Id {
-		return false
-	}
-
-	// シークレットを確認
-	if clientSecret != client.Secret {
-		return false
-	}
-
-	return true
+	return clientSecret == c.Secret
 }
-func (c ClientAssertionTypeClientSecretPost) Check(client Client) bool {
+func (c ClientAssertionTypeClientSecretPost) Check(req http.Request) bool {
 	// TODO: Implement check logic for ClientSecretPost
 	return false
 }
-func (c ClientAssertionTypeClientSecretJwt) Check(client Client) bool {
+func (c ClientAssertionTypeClientSecretJwt) Check(req http.Request) bool {
 	// TODO: Implement check logic for ClientSecretJwt
 	return false
 }
-func (c ClientAssertionTypePrivateKeyJwt) Check(client Client) bool {
+func (c ClientAssertionTypePrivateKeyJwt) Check(req http.Request) bool {
 	// TODO: Implement check logic for PrivateKeyJwt
 	return false
 }
-func (c ClientAssertionTypeSelfSignedTlsClientAuth) Check(client Client) bool {
+func (c ClientAssertionTypeSelfSignedTlsClientAuth) Check(req http.Request) bool {
 	// TODO: Implement check logic for SelfSignedTlsClientAuth
 	return false
 }
-func (c ClientAssertionTypeTlsClientAuth) Check(client Client) bool {
+func (c ClientAssertionTypeTlsClientAuth) Check(req http.Request) bool {
 	// TODO: Implement check logic for TlsClientAuth
 	return false
 }
