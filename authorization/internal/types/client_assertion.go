@@ -10,7 +10,9 @@ type ClientAssertionTypeNone struct{}
 type ClientAssertionTypeClientSecretBasic struct {
 	Secret string
 }
-type ClientAssertionTypeClientSecretPost struct{}
+type ClientAssertionTypeClientSecretPost struct {
+	Secret string
+}
 type ClientAssertionTypeClientSecretJwt struct{}
 type ClientAssertionTypePrivateKeyJwt struct{}
 type ClientAssertionTypeTlsClientAuth struct{}
@@ -34,8 +36,11 @@ func (c ClientAssertionTypeClientSecretBasic) Check(req http.Request) bool {
 	return clientSecret == c.Secret
 }
 func (c ClientAssertionTypeClientSecretPost) Check(req http.Request) bool {
-	// TODO: Implement check logic for ClientSecretPost
-	return false
+	clientSecret := req.PostFormValue("client_secret")
+	if clientSecret == "" {
+		return false
+	}
+	return clientSecret == c.Secret
 }
 func (c ClientAssertionTypeClientSecretJwt) Check(req http.Request) bool {
 	// TODO: Implement check logic for ClientSecretJwt

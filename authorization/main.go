@@ -388,13 +388,6 @@ func token(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
-	// // clientシークレットの確認
-	// if clients.Secret != query.Get("client_secret") {
-	// 	slog.Error("client_secret is not match.")
-	// 	w.WriteHeader(http.StatusBadRequest)
-	// 	w.Write([]byte("invalid_request. client_secret is not match.\n"))
-	// }
-
 	// PKCEのチェック
 	// clientから送られてきたverifyをsh256で計算&base64urlエンコードしてから
 	// 認可リクエスト時に送られてきてセッションに保存しておいたchallengeと一致するか確認
