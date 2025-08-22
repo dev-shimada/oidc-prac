@@ -33,6 +33,22 @@ var clients = map[string]types.Client{
 	},
 }
 
+func corsMiddleware(handler http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		w.Header().Set("Access-Control-Max-Age", "86400")
+
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		handler.ServeHTTP(w, r)
+	})
+}
+
 func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/hello", func(w http.ResponseWriter, r *http.Request) {
@@ -51,7 +67,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:    ":49151",
-		Handler: mux,
+		Handler: corsMiddleware(mux),
 	}
 
 	slog.Info("Server is running at :49151 Press CTRL-C to exit.")
@@ -110,17 +126,18 @@ func wellKnownOpenIdConfiguration(w http.ResponseWriter, req *http.Request) {
 		OpTosUri                                   string   `json:"op_tos_uri,omitempty"`
 		CodeChallengeMethodsSupported              []string `json:"code_challenge_methods_supported,omitempty"`
 	}{
-		Issuer:                           "http://localhost:49151",
-		AuthorizationEndpoint:            "http://localhost:49151/auth",
-		TokenEndpoint:                    "http://localhost:49151/token",
-		UserinfoEndpoint:                 "http://localhost:49151/userinfo",
-		JwksUri:                          "http://localhost:49151/certs",
-		ScopesSupported:                  []string{"openid", "profile", "email", "address", "phone"},
-		ResponseTypesSupported:           []string{"code id_token"},
-		GrantTypesSupported:              []string{"authorization_code"},
-		SubjectTypesSupported:            []string{"public"},
-		IdTokenSigningAlgValuesSupported: []string{"HS256", "RS256"},
-		CodeChallengeMethodsSupported:    []string{"plain", "S256"},
+		Issuer:                            "http://localhost:49151",
+		AuthorizationEndpoint:             "http://localhost:49151/auth",
+		TokenEndpoint:                     "http://localhost:49151/token",
+		UserinfoEndpoint:                  "http://localhost:49151/userinfo",
+		JwksUri:                           "http://localhost:49151/certs",
+		ScopesSupported:                   []string{"openid", "profile", "email", "address", "phone"},
+		ResponseTypesSupported:            []string{"code", "code id_token"},
+		GrantTypesSupported:               []string{"authorization_code"},
+		SubjectTypesSupported:             []string{"public"},
+		IdTokenSigningAlgValuesSupported:  []string{"HS256", "RS256"},
+		TokenEndpointAuthMethodsSupported: []string{"client_secret_basic", "client_secret_post", "client_secret_jwt", "none"},
+		CodeChallengeMethodsSupported:     []string{"plain", "S256"},
 	}
 	res, err := json.Marshal(config)
 	if err != nil {
@@ -159,18 +176,19 @@ func auth(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// レスポンスタイプはハイブリッドフローだけをサポート
-	if query.Get("response_type") != "code id_token" {
-		slog.Error(fmt.Sprintf("want: code id_token, got: %s", query.Get("response_type")))
+	// レスポンスタイプの検証（認可コードフローとハイブリッドフロー）
+	responseType := query.Get("response_type")
+	if responseType != "code" && responseType != "code id_token" {
+		slog.Error(fmt.Sprintf("unsupported response_type: %s", responseType))
 		w.WriteHeader(http.StatusBadRequest)
-		_, _ = w.Write([]byte("only support code id_token"))
+		_, _ = w.Write([]byte("unsupported_response_type"))
 		return
 	}
 
 	// PKCE パラメータの検証
 	codeChallenge := query.Get("code_challenge")
 	codeChallengeMethod := query.Get("code_challenge_method")
-	
+
 	// code_challenge が提供されている場合は code_challenge_method も必須
 	if codeChallenge != "" {
 		if codeChallengeMethod == "" {
@@ -193,6 +211,7 @@ func auth(w http.ResponseWriter, req *http.Request) {
 		RedirectUri:           query.Get("redirect_uri"),
 		Code_challenge:        codeChallenge,
 		Code_challenge_method: codeChallengeMethod,
+		ResponseType:          responseType,
 	}
 	sessionList[sessionId] = session
 
@@ -273,30 +292,39 @@ func authCheck(w http.ResponseWriter, req *http.Request) {
 
 		slog.Info("auth code accepted", "authCode", authCodeString)
 
-		d := sha256.Sum256([]byte(authCodeString))
-		digest := d[:]
-		leftHalf := digest[:len(digest)/2]
-		hashClaim := base64.RawURLEncoding.EncodeToString(leftHalf)
+		// レスポンスタイプに応じてリダイレクト処理を変更
+		if v.ResponseType == "code id_token" {
+			// ハイブリッドフロー: 認可コードとIDトークンの両方を返す
+			d := sha256.Sum256([]byte(authCodeString))
+			digest := d[:]
+			leftHalf := digest[:len(digest)/2]
+			hashClaim := base64.RawURLEncoding.EncodeToString(leftHalf)
 
-		jws := &jwt.JWS{
-			Header: jwt.IdTokenHeader{
-				Alg: "RS256",
-				Typ: "JWT",
-			},
-			Payload: jwt.JWT{
-				Iss:   "http://localhost:49151",
-				Sub:   v.Client,
-				Aud:   "1234",
-				Exp:   time.Now().Add(ACCESS_TOKEN_DURATION * time.Second).Unix(),
-				Iat:   time.Now().Unix(),
-				CHash: hashClaim,
-			},
+			jws := &jwt.JWS{
+				Header: jwt.IdTokenHeader{
+					Alg: "RS256",
+					Typ: "JWT",
+				},
+				Payload: jwt.JWT{
+					Iss:   "http://localhost:49151",
+					Sub:   v.Client,
+					Aud:   "1234",
+					Exp:   time.Now().Add(ACCESS_TOKEN_DURATION * time.Second).Unix(),
+					Iat:   time.Now().Unix(),
+					CHash: hashClaim,
+				},
+			}
+			idToken, _ := jws.Make()
+
+			location := fmt.Sprintf("%s?code=%s&id_token=%s&state=%s", v.RedirectUri, authCodeString, idToken, v.State)
+			slog.Info("redirect to client (hybrid flow)", "location", location)
+			http.Redirect(w, req, location, http.StatusFound)
+		} else {
+			// 認可コードフロー: 認可コードのみを返す
+			location := fmt.Sprintf("%s?code=%s&state=%s", v.RedirectUri, authCodeString, v.State)
+			slog.Info("redirect to client (authorization code flow)", "location", location)
+			http.Redirect(w, req, location, http.StatusFound)
 		}
-		idToken, _ := jws.Make()
-
-		location := fmt.Sprintf("%s?code=%s&id_token=%s&state=%s", v.RedirectUri, authCodeString, idToken, v.State)
-		slog.Info("redirect to client", "location", location)
-		http.Redirect(w, req, location, http.StatusFound)
 	}
 }
 
@@ -311,7 +339,7 @@ func validateCodeChallenge(verifier, challenge string, method CodeChallengeMetho
 	if challenge == "" {
 		return false
 	}
-	
+
 	switch method {
 	case CodeChallengePlain:
 		return verifier == challenge
@@ -352,7 +380,32 @@ func token(w http.ResponseWriter, req *http.Request) {
 	}
 	query := req.Form
 
-	requiredParameter := []string{"grant_type", "code", "client_id", "redirect_uri"}
+	var (
+		requiredParameter []string = []string{"grant_type", "code", "client_id", "redirect_uri"}
+		client            types.Client
+		clientId          string
+		code              string
+	)
+	switch {
+	case req.Header.Get("Authorization") != "":
+		requiredParameter = []string{"grant_type"}
+		encoded := strings.TrimPrefix(req.Header.Get("Authorization"), "Basic ")
+		if decoded, err := base64.StdEncoding.DecodeString(encoded); err == nil {
+			clientId = strings.SplitN(string(decoded), ":", 2)[0]
+			client = clients[clientId]
+		} else {
+			slog.Error(fmt.Sprintf("Failed to decode Authorization header: %v", err))
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte("invalid_request. Authorization header is not valid.\n"))
+			return
+		}
+		code = req.FormValue("code")
+	case query.Get("client_id") != "":
+		clientId = query.Get("client_id")
+		client = clients[query.Get(clientId)]
+		code = query.Get("code")
+	}
+	slog.Info(fmt.Sprintf("clientId: %s, code: %s", clientId, code))
 	// 必須パラメータのチェック
 	for _, v := range requiredParameter {
 		if !query.Has(v) {
@@ -364,6 +417,16 @@ func token(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
+	// クライアント認証
+	for _, v := range client.ClientAssertionType {
+		if !v.Check(*req) {
+			slog.Error("client assertion type is not match")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte("invalid_request. client assertion type is not match.\n"))
+			return
+		}
+	}
+
 	// 認可コードフローだけサポート
 	if query.Get("grant_type") != "authorization_code" {
 		w.WriteHeader(http.StatusBadRequest)
@@ -371,8 +434,8 @@ func token(w http.ResponseWriter, req *http.Request) {
 	}
 
 	// 保存していた認可コードのデータを取得。なければエラーを返す
-	slog.Info(fmt.Sprintf("auth code is %s", query.Get("code")))
-	v, ok := AuthCodeList[query.Get("code")]
+	slog.Info(fmt.Sprintf("auth code is %s", code))
+	v, ok := AuthCodeList[code]
 	if !ok {
 		slog.Error("auth code isn't exist")
 		w.WriteHeader(http.StatusBadRequest)
@@ -380,7 +443,7 @@ func token(w http.ResponseWriter, req *http.Request) {
 	}
 
 	// 認可リクエスト時のクライアントIDと比較
-	if v.ClientId != query.Get("client_id") {
+	if v.ClientId != clientId {
 		slog.Error("client_id not match")
 		w.WriteHeader(http.StatusBadRequest)
 		// w.Write([]byte("invalid_request. client_id not match.\n"))
@@ -401,27 +464,6 @@ func token(w http.ResponseWriter, req *http.Request) {
 		_, _ = w.Write([]byte("invalid_request. auth code time limit is expire.\n"))
 	}
 
-	var client types.Client
-	// client id の一致確認
-	if c, ok := clients[query.Get("client_id")]; !ok {
-		slog.Error(fmt.Sprintf("client_id %s is not found", query.Get("client_id")))
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = w.Write([]byte("invalid_request. client_id is not found.\n"))
-		return
-	} else {
-		client = c
-	}
-
-	for _, v := range client.ClientAssertionType {
-		if !v.Check(*req) {
-			// クライアント認証のチェック
-			slog.Error("client assertion type is not match")
-			w.WriteHeader(http.StatusBadRequest)
-			_, _ = w.Write([]byte("invalid_request. client assertion type is not match.\n"))
-			return
-		}
-	}
-
 	// PKCEのチェック
 	session := sessionList[AuthCodeList[query.Get("code")].SessionId]
 	if session.Code_challenge != "" {
@@ -432,14 +474,14 @@ func token(w http.ResponseWriter, req *http.Request) {
 			_, _ = w.Write([]byte("invalid_request. code_verifier is missing"))
 			return
 		}
-		
+
 		method := CodeChallengeMethod(session.Code_challenge_method)
 		if method == "" {
 			method = CodeChallengePlain // デフォルト
 		}
-		
+
 		if !validateCodeChallenge(codeVerifier, session.Code_challenge, method) {
-			slog.Error(fmt.Sprintf("PKCE verification failed: verifier=%s, challenge=%s, method=%s", 
+			slog.Error(fmt.Sprintf("PKCE verification failed: verifier=%s, challenge=%s, method=%s",
 				codeVerifier, session.Code_challenge, method))
 			w.WriteHeader(http.StatusBadRequest)
 			_, _ = w.Write([]byte("invalid_grant. PKCE verification failed"))

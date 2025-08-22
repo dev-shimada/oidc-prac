@@ -11,15 +11,16 @@ const REDIRECT_URL = 'http://localhost:49150/callback';
 const userManagerSettings: UserManagerSettings = {
   authority: OIDC_ISSUER,
   client_id: CLIENT_ID,
+  client_secret: 'secret',
   redirect_uri: REDIRECT_URL,
-  response_type: 'code id_token',
+  response_type: 'code',
   scope: 'openid',
   post_logout_redirect_uri: 'http://localhost:49150',
-  // Enable PKCE (no client secret needed for public clients)
   includeIdTokenInSilentRenew: false,
   automaticSilentRenew: false,
-  silent_redirect_uri: 'http://localhost:49150/silent-callback',
-  // For public clients (SPA), don't use client_secret
+  silent_redirect_uri: 'http://localhost:49150/callback',
+  // Use client_secret_basic authentication
+  client_authentication: 'client_secret_basic',
   loadUserInfo: true,
 };
 

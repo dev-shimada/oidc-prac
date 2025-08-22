@@ -12,6 +12,7 @@ type Session struct {
 	RedirectUri           string
 	Code_challenge        string
 	Code_challenge_method string
+	ResponseType          string
 	// OIDC用
 	// nonce string
 	// IDトークンを払い出すか否か、trueならIDトークンもfalseならOAuthでトークンだけ払い出す

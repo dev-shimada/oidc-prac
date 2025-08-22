@@ -310,6 +310,24 @@ func TestWellKnownOpenIdConfiguration_PKCESupport(t *testing.T) {
 	} else {
 		t.Error("code_challenge_methods_supported field is missing")
 	}
+	
+	// Check response_types_supported includes both "code" and "code id_token"
+	if responseTypes, exists := config["response_types_supported"]; exists {
+		responseTypesArray := responseTypes.([]interface{})
+		expectedTypes := []string{"code", "code id_token"}
+		
+		if len(responseTypesArray) != len(expectedTypes) {
+			t.Errorf("response_types_supported length: got %d, want %d", len(responseTypesArray), len(expectedTypes))
+		}
+		
+		for i, responseType := range expectedTypes {
+			if i < len(responseTypesArray) && responseTypesArray[i] != responseType {
+				t.Errorf("response_types_supported[%d]: got %v, want %v", i, responseTypesArray[i], responseType)
+			}
+		}
+	} else {
+		t.Error("response_types_supported field is missing")
+	}
 }
 
 // Helper function to generate S256 challenge for testing
