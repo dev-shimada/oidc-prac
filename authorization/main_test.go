@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -59,11 +61,11 @@ func TestWellKnownOpenIdConfiguration(t *testing.T) {
 
 	// Test specific field values
 	expectedValues := map[string]interface{}{
-		"issuer":                 "http://localhost:8081",
-		"authorization_endpoint": "http://localhost:8081/auth",
-		"token_endpoint":         "http://localhost:8081/token",
-		"userinfo_endpoint":      "http://localhost:8081/userinfo",
-		"jwks_uri":               "http://localhost:8081/certs",
+		"issuer":                 "http://localhost:49151",
+		"authorization_endpoint": "http://localhost:49151/auth",
+		"token_endpoint":         "http://localhost:49151/token",
+		"userinfo_endpoint":      "http://localhost:49151/userinfo",
+		"jwks_uri":               "http://localhost:49151/certs",
 	}
 
 	for field, expectedValue := range expectedValues {
@@ -101,8 +103,14 @@ func TestWellKnownOpenIdConfiguration(t *testing.T) {
 
 	if signingAlgs, exists := config["id_token_signing_alg_values_supported"]; exists {
 		algs := signingAlgs.([]interface{})
-		if len(algs) != 1 || algs[0] != "RS256" {
-			t.Errorf("id_token_signing_alg_values_supported: got %v, want [\"RS256\"]", algs)
+		expectedAlgs := []string{"HS256", "RS256"}
+		if len(algs) != len(expectedAlgs) {
+			t.Errorf("id_token_signing_alg_values_supported length: got %d, want %d", len(algs), len(expectedAlgs))
+		}
+		for i, expectedAlg := range expectedAlgs {
+			if i < len(algs) && algs[i] != expectedAlg {
+				t.Errorf("id_token_signing_alg_values_supported[%d]: got %v, want %v", i, algs[i], expectedAlg)
+			}
 		}
 	} else {
 		t.Error("id_token_signing_alg_values_supported field is missing")
@@ -177,4 +185,137 @@ func TestWellKnownOpenIdConfiguration_HTTPMethods(t *testing.T) {
 			t.Logf("Method %s returned status %d (this may be expected behavior)", method, rr.Code)
 		}
 	}
+}
+
+func TestPKCEValidation(t *testing.T) {
+	tests := []struct {
+		name      string
+		verifier  string
+		challenge string
+		method    CodeChallengeMethod
+		expected  bool
+	}{
+		{
+			name:      "Plain method - valid",
+			verifier:  "test_verifier",
+			challenge: "test_verifier",
+			method:    CodeChallengePlain,
+			expected:  true,
+		},
+		{
+			name:      "Plain method - invalid",
+			verifier:  "test_verifier",
+			challenge: "wrong_challenge",
+			method:    CodeChallengePlain,
+			expected:  false,
+		},
+		{
+			name:      "S256 method - valid",
+			verifier:  "test_verifier",
+			challenge: generateS256Challenge("test_verifier"),
+			method:    CodeChallengeS256,
+			expected:  true,
+		},
+		{
+			name:      "S256 method - invalid",
+			verifier:  "test_verifier",
+			challenge: "wrong_challenge",
+			method:    CodeChallengeS256,
+			expected:  false,
+		},
+		{
+			name:      "Empty challenge",
+			verifier:  "test_verifier",
+			challenge: "",
+			method:    CodeChallengeS256,
+			expected:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := validateCodeChallenge(tt.verifier, tt.challenge, tt.method)
+			if result != tt.expected {
+				t.Errorf("validateCodeChallenge() = %v, want %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestBase64URLEncode(t *testing.T) {
+	tests := []struct {
+		name     string
+		verifier string
+		method   CodeChallengeMethod
+		expected string
+	}{
+		{
+			name:     "Plain method",
+			verifier: "test_verifier",
+			method:   CodeChallengePlain,
+			expected: "test_verifier",
+		},
+		{
+			name:     "S256 method",
+			verifier: "test_verifier",
+			method:   CodeChallengeS256,
+			expected: generateS256Challenge("test_verifier"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := base64URLEncode(tt.verifier, tt.method)
+			if result != tt.expected {
+				t.Errorf("base64URLEncode() = %v, want %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestWellKnownOpenIdConfiguration_PKCESupport(t *testing.T) {
+	req, err := http.NewRequest("GET", "/.well-known/openid-configuration", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rr := httptest.NewRecorder()
+	handler := http.HandlerFunc(wellKnownOpenIdConfiguration)
+	handler.ServeHTTP(rr, req)
+
+	if status := rr.Code; status != http.StatusOK {
+		t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusOK)
+	}
+
+	var config map[string]interface{}
+	err = json.Unmarshal(rr.Body.Bytes(), &config)
+	if err != nil {
+		t.Fatalf("Could not parse JSON response: %v", err)
+	}
+
+	// Check PKCE support
+	if methods, exists := config["code_challenge_methods_supported"]; exists {
+		methodsArray := methods.([]interface{})
+		expectedMethods := []string{"plain", "S256"}
+		
+		if len(methodsArray) != len(expectedMethods) {
+			t.Errorf("code_challenge_methods_supported length: got %d, want %d", len(methodsArray), len(expectedMethods))
+		}
+		
+		for i, method := range expectedMethods {
+			if i < len(methodsArray) && methodsArray[i] != method {
+				t.Errorf("code_challenge_methods_supported[%d]: got %v, want %v", i, methodsArray[i], method)
+			}
+		}
+	} else {
+		t.Error("code_challenge_methods_supported field is missing")
+	}
+}
+
+// Helper function to generate S256 challenge for testing
+func generateS256Challenge(verifier string) string {
+	h := sha256.New()
+	h.Write([]byte(verifier))
+	hashed := h.Sum(nil)
+	return base64.URLEncoding.WithPadding(base64.NoPadding).EncodeToString(hashed)
 }

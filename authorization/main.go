@@ -108,16 +108,19 @@ func wellKnownOpenIdConfiguration(w http.ResponseWriter, req *http.Request) {
 		RequireRequestUriRegistration              bool     `json:"require_request_uri_registration,omitempty"`
 		OpPolicyUri                                string   `json:"op_policy_uri,omitempty"`
 		OpTosUri                                   string   `json:"op_tos_uri,omitempty"`
+		CodeChallengeMethodsSupported              []string `json:"code_challenge_methods_supported,omitempty"`
 	}{
 		Issuer:                           "http://localhost:49151",
 		AuthorizationEndpoint:            "http://localhost:49151/auth",
 		TokenEndpoint:                    "http://localhost:49151/token",
 		UserinfoEndpoint:                 "http://localhost:49151/userinfo",
 		JwksUri:                          "http://localhost:49151/certs",
-		ResponseTypesSupported:           []string{"code id_token"},
 		ScopesSupported:                  []string{"openid", "profile", "email", "address", "phone"},
+		ResponseTypesSupported:           []string{"code id_token"},
+		GrantTypesSupported:              []string{"authorization_code"},
 		SubjectTypesSupported:            []string{"public"},
 		IdTokenSigningAlgValuesSupported: []string{"HS256", "RS256"},
+		CodeChallengeMethodsSupported:    []string{"plain", "S256"},
 	}
 	res, err := json.Marshal(config)
 	if err != nil {
@@ -163,6 +166,24 @@ func auth(w http.ResponseWriter, req *http.Request) {
 		_, _ = w.Write([]byte("only support code id_token"))
 		return
 	}
+
+	// PKCE パラメータの検証
+	codeChallenge := query.Get("code_challenge")
+	codeChallengeMethod := query.Get("code_challenge_method")
+	
+	// code_challenge が提供されている場合は code_challenge_method も必須
+	if codeChallenge != "" {
+		if codeChallengeMethod == "" {
+			codeChallengeMethod = "plain" // デフォルトは plain
+		}
+		// サポートされているメソッドかチェック
+		if codeChallengeMethod != "S256" && codeChallengeMethod != "plain" {
+			slog.Error(fmt.Sprintf("unsupported code_challenge_method: %s", codeChallengeMethod))
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte("unsupported_code_challenge_method"))
+			return
+		}
+	}
 	sessionId := uuid.New().String()
 	// セッションを保存しておく
 	session := types.Session{
@@ -170,8 +191,8 @@ func auth(w http.ResponseWriter, req *http.Request) {
 		State:                 query.Get("state"),
 		Scopes:                query.Get("scope"),
 		RedirectUri:           query.Get("redirect_uri"),
-		Code_challenge:        query.Get("code_challenge"),
-		Code_challenge_method: query.Get("code_challenge_method"),
+		Code_challenge:        codeChallenge,
+		Code_challenge_method: codeChallengeMethod,
 	}
 	sessionList[sessionId] = session
 
@@ -286,21 +307,34 @@ const (
 	CodeChallengeS256  CodeChallengeMethod = "S256"
 )
 
-// https://auth0.com/docs/authorization/flows/call-your-api-using-the-authorization-code-flow-with-pkce#javascript-sample
+func validateCodeChallenge(verifier, challenge string, method CodeChallengeMethod) bool {
+	if challenge == "" {
+		return false
+	}
+	
+	switch method {
+	case CodeChallengePlain:
+		return verifier == challenge
+	case CodeChallengeS256:
+		h := sha256.New()
+		h.Write([]byte(verifier))
+		hashed := h.Sum(nil)
+		expected := base64.URLEncoding.WithPadding(base64.NoPadding).EncodeToString(hashed)
+		return expected == challenge
+	default:
+		return false
+	}
+}
+
 func base64URLEncode(verifier string, ccm CodeChallengeMethod) string {
-	// hash := sha256.Sum256([]byte(verifier))
-	// return base64.RawURLEncoding.EncodeToString(hash[:])
-	// If the code challenge method is "plain", the code challenge is the same as the code verifier
 	if ccm == CodeChallengePlain {
 		return verifier
 	}
 
-	// Hash the code verifier using SHA-256
 	h := sha256.New()
 	h.Write([]byte(verifier))
 	hashed := h.Sum(nil)
 
-	// Base64-url-encode the hash and remove any padding
 	codeChallenge := base64.URLEncoding.WithPadding(base64.NoPadding).EncodeToString(hashed)
 
 	return codeChallenge
@@ -389,13 +423,29 @@ func token(w http.ResponseWriter, req *http.Request) {
 	}
 
 	// PKCEのチェック
-	// clientから送られてきたverifyをsh256で計算&base64urlエンコードしてから
-	// 認可リクエスト時に送られてきてセッションに保存しておいたchallengeと一致するか確認
 	session := sessionList[AuthCodeList[query.Get("code")].SessionId]
-	if session.Code_challenge != base64URLEncode(query.Get("code_verifier"), CodeChallengeS256) {
-		slog.Error(fmt.Sprintf("PKCE verification failed: %s, %s", session.Code_challenge, base64URLEncode(query.Get("code_verifier"), CodeChallengeS256)))
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = w.Write([]byte("PKCE check is err..."))
+	if session.Code_challenge != "" {
+		codeVerifier := query.Get("code_verifier")
+		if codeVerifier == "" {
+			slog.Error("code_verifier is missing for PKCE flow")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte("invalid_request. code_verifier is missing"))
+			return
+		}
+		
+		method := CodeChallengeMethod(session.Code_challenge_method)
+		if method == "" {
+			method = CodeChallengePlain // デフォルト
+		}
+		
+		if !validateCodeChallenge(codeVerifier, session.Code_challenge, method) {
+			slog.Error(fmt.Sprintf("PKCE verification failed: verifier=%s, challenge=%s, method=%s", 
+				codeVerifier, session.Code_challenge, method))
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte("invalid_grant. PKCE verification failed"))
+			return
+		}
+		slog.Info("PKCE verification successful")
 	}
 
 	tokenString := uuid.New().String()
