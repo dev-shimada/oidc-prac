@@ -307,7 +307,7 @@ func authCheck(w http.ResponseWriter, req *http.Request) {
 				},
 				Payload: jwt.JWT{
 					Iss:   "http://localhost:49151",
-					Sub:   v.Client,
+					Sub:   user.Sub,
 					Aud:   "1234",
 					Exp:   time.Now().Add(ACCESS_TOKEN_DURATION * time.Second).Unix(),
 					Iat:   time.Now().Unix(),
@@ -515,7 +515,7 @@ func token(w http.ResponseWriter, req *http.Request) {
 		},
 		Payload: jwt.JWT{
 			Iss:    "http://localhost:49151",
-			Sub:    v.ClientId,
+			Sub:    user.Sub,
 			Aud:    "1234",
 			Exp:    time.Now().Add(ACCESS_TOKEN_DURATION * time.Second).Unix(),
 			Iat:    time.Now().Unix(),
@@ -635,6 +635,7 @@ func userinfo(w http.ResponseWriter, req *http.Request) {
 	}
 
 	buf, _ := json.MarshalIndent(m, "", "  ")
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, err := w.Write(buf)
 	if err != nil {

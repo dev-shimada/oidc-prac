@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { handleCallback } from '@/lib/oidc';
 import { User } from 'oidc-client-ts';
+import UserProfile from '@/components/UserProfile';
 
 export default function CallbackPage() {
   const [user, setUser] = useState<User | null>(null);
@@ -15,10 +16,7 @@ export default function CallbackPage() {
         const userData = await handleCallback();
         setUser(userData);
         
-        // Redirect to home page after successful login
-        setTimeout(() => {
-          window.location.href = '/';
-        }, 2000);
+        // Remove automatic redirect to allow user to view their profile
       } catch (err) {
         console.error('Callback error:', err);
         setError(err instanceof Error ? err.message : 'Authentication failed');
@@ -75,26 +73,5 @@ export default function CallbackPage() {
     );
   }
 
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="max-w-md w-full space-y-8">
-        <div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-green-600">
-            Login Successful!
-          </h2>
-          <p className="mt-2 text-center text-sm text-gray-600">
-            Welcome, {user?.profile?.name || user?.profile?.sub}
-          </p>
-          <div className="mt-4 p-4 bg-gray-100 rounded-md">
-            <pre className="text-xs overflow-auto">
-              {JSON.stringify(user?.profile, null, 2)}
-            </pre>
-          </div>
-          <p className="mt-4 text-center text-sm text-gray-500">
-            Redirecting to home page...
-          </p>
-        </div>
-      </div>
-    </div>
-  );
+  return <UserProfile user={user} />;
 }
