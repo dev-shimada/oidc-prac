@@ -1,9 +1,5 @@
 {
     "name": "oidc-prac",
-    "runArgs": [
-        "--env-file",
-        ".devcontainer/.env"
-    ],
     "build": {
         "context": ".",
         "dockerfile": "Dockerfile",
