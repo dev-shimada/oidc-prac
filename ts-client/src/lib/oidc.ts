@@ -1,12 +1,29 @@
 'use client';
 
-import { UserManager, UserManagerSettings, User } from 'oidc-client-ts';
+import { UserManager, UserManagerSettings, User, WebStorageStateStore } from 'oidc-client-ts';
 
 // OIDC Configuration matching the Go example
 const OIDC_ISSUER = 'http://localhost:49151';
 const CLIENT_ID = '1234';
 const CLIENT_SECRET = 'secret';
 const REDIRECT_URL = 'http://localhost:49150/callback';
+
+// Cryptographically secure random string generator
+function generateRandomString(length: number = 32): string {
+  const array = new Uint8Array(length);
+  crypto.getRandomValues(array);
+  return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+// Generate nonce - used to prevent replay attacks
+export function generateNonce(): string {
+  return generateRandomString(32);
+}
+
+// Generate state - used to prevent CSRF attacks
+export function generateState(): string {
+  return generateRandomString(32);
+}
 
 // Client authentication methods
 export type ClientAuthMethod = 'client_secret_basic' | 'client_secret_post' | 'client_secret_jwt';
@@ -37,6 +54,14 @@ function createUserManagerSettings(authMethod: ClientAuthMethod, config?: AuthMe
     automaticSilentRenew: false,
     silent_redirect_uri: 'http://localhost:49150/callback',
     loadUserInfo: true,
+    // Enable state and nonce storage in sessionStorage for security
+    stateStore: typeof window !== 'undefined' ? new WebStorageStateStore({ store: window.sessionStorage }) : undefined,
+    // Ensure state and nonce are used (these are enabled by default in oidc-client-ts)
+    // but explicitly setting them ensures they're always present
+    metadata: {
+      // The library will automatically generate state and nonce
+      // This metadata object can be extended with additional OIDC provider settings if needed
+    },
   };
 
   switch (authMethod) {

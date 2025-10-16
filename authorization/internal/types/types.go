@@ -8,6 +8,7 @@ import (
 type Session struct {
 	Client                string
 	State                 string
+	Nonce                 string
 	Scopes                string
 	RedirectUri           string
 	Code_challenge        string
@@ -68,6 +69,7 @@ type AuthCode struct {
 	Redirect_uri string
 	Expires_at   int64
 	SessionId    string
+	Nonce        string
 }
 
 type TokenCode struct {

@@ -207,6 +207,7 @@ func auth(w http.ResponseWriter, req *http.Request) {
 	session := types.Session{
 		Client:                query.Get("client_id"),
 		State:                 query.Get("state"),
+		Nonce:                 query.Get("nonce"),
 		Scopes:                query.Get("scope"),
 		RedirectUri:           query.Get("redirect_uri"),
 		Code_challenge:        codeChallenge,
@@ -286,6 +287,7 @@ func authCheck(w http.ResponseWriter, req *http.Request) {
 			Redirect_uri: v.RedirectUri,
 			Expires_at:   time.Now().Add(AUTH_CODE_DURATION * time.Second).Unix(),
 			SessionId:    cookie.Value,
+			Nonce:        v.Nonce, // Store nonce from session to authCode
 		}
 		// 認可コードを保存
 		AuthCodeList[authCodeString] = authData
@@ -311,6 +313,7 @@ func authCheck(w http.ResponseWriter, req *http.Request) {
 					Aud:   "1234",
 					Exp:   time.Now().Add(ACCESS_TOKEN_DURATION * time.Second).Unix(),
 					Iat:   time.Now().Unix(),
+					Nonce: v.Nonce, // Include nonce in ID token for replay attack prevention
 					CHash: hashClaim,
 				},
 			}
@@ -519,6 +522,7 @@ func token(w http.ResponseWriter, req *http.Request) {
 			Aud:    "1234",
 			Exp:    time.Now().Add(ACCESS_TOKEN_DURATION * time.Second).Unix(),
 			Iat:    time.Now().Unix(),
+			Nonce:  v.Nonce, // Include nonce in ID token for replay attack prevention
 			AtHash: hashClaim,
 		},
 	}
