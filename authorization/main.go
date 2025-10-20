@@ -229,11 +229,21 @@ func auth(w http.ResponseWriter, req *http.Request) {
 	}
 	http.SetCookie(w, cookie)
 
-	// ログイン&権限認可の画面を戻す
+	// 既存のセッションがあり、認証済みの場合は認可画面を表示
+	if session.AuthenticatedUser != "" {
+		// 認可画面を表示
+		showConsentPage(w, session)
+		return
+	}
+
+	// 未認証の場合はログイン画面を表示
 	var templates = make(map[string]*template.Template)
 	var err error
 	if templates["login"], err = template.ParseFiles("login.html"); err != nil {
 		slog.Error(fmt.Sprintf("Failed to parse login template: %v", err))
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte("internal server error"))
+		return
 	}
 	if err := templates["login"].Execute(w, struct {
 		ClientId string
@@ -243,8 +253,69 @@ func auth(w http.ResponseWriter, req *http.Request) {
 		Scope:    session.Scopes,
 	}); err != nil {
 		slog.Error(fmt.Sprintf("Failed to execute login template: %v", err))
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte("internal server error"))
+		return
 	}
 	slog.Info("return login page...")
+}
+
+func showConsentPage(w http.ResponseWriter, session types.Session) {
+	var templates = make(map[string]*template.Template)
+	var err error
+	if templates["consent"], err = template.ParseFiles("consent.html"); err != nil {
+		slog.Error(fmt.Sprintf("Failed to parse consent template: %v", err))
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte("internal server error"))
+		return
+	}
+
+	// スコープの説明を生成
+	type ScopeInfo struct {
+		Name        string
+		Description string
+	}
+
+	scopeDescriptions := map[string]string{
+		"openid":  "あなたの基本的な識別情報（ID）にアクセスします",
+		"profile": "あなたの名前、プロフィール画像などの基本プロフィール情報にアクセスします",
+		"email":   "あなたのメールアドレスにアクセスします",
+		"phone":   "あなたの電話番号にアクセスします",
+		"address": "あなたの住所情報にアクセスします",
+	}
+
+	var scopes []ScopeInfo
+	if session.Scopes != "" {
+		for _, scope := range strings.Split(session.Scopes, " ") {
+			if desc, ok := scopeDescriptions[scope]; ok {
+				scopes = append(scopes, ScopeInfo{
+					Name:        scope,
+					Description: desc,
+				})
+			} else {
+				scopes = append(scopes, ScopeInfo{
+					Name:        scope,
+					Description: "カスタムスコープ",
+				})
+			}
+		}
+	}
+
+	if err := templates["consent"].Execute(w, struct {
+		ClientId string
+		Scope    string
+		Scopes   []ScopeInfo
+	}{
+		ClientId: session.Client,
+		Scope:    session.Scopes,
+		Scopes:   scopes,
+	}); err != nil {
+		slog.Error(fmt.Sprintf("Failed to execute consent template: %v", err))
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte("internal server error"))
+		return
+	}
+	slog.Info("return consent page...")
 }
 
 var user = types.User{
@@ -261,73 +332,107 @@ var user = types.User{
 var AuthCodeList = make(map[string]types.AuthCode)
 
 func authCheck(w http.ResponseWriter, req *http.Request) {
+	// セッションクッキーを取得
+	cookie, err := req.Cookie("session")
+	if err != nil {
+		slog.Error(fmt.Sprintf("Failed to get session cookie: %v", err))
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte("session cookie is not found"))
+		return
+	}
 
-	loginUser := req.FormValue("username")
-	password := req.FormValue("password")
+	session, ok := sessionList[cookie.Value]
+	if !ok {
+		slog.Error("session not found")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte("invalid session"))
+		return
+	}
 
-	if loginUser != user.AccountName || password != user.Password {
-		slog.Error(fmt.Sprintf("login failed: %s, %s", loginUser, password))
-		_, _ = w.Write([]byte("login failed"))
-	} else {
-		cookie, err := req.Cookie("session")
-		if err != nil {
-			slog.Error(fmt.Sprintf("Failed to get session cookie: %v", err))
-			w.WriteHeader(http.StatusBadRequest)
-			_, _ = w.Write([]byte("session cookie is not found"))
+	// ユーザーのアクション確認
+	action := req.FormValue("action")
+
+	// 未認証の場合：認証処理
+	if session.AuthenticatedUser == "" {
+		loginUser := req.FormValue("username")
+		password := req.FormValue("password")
+
+		if loginUser != user.AccountName || password != user.Password {
+			slog.Error(fmt.Sprintf("login failed: %s, %s", loginUser, password))
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte("login failed"))
 			return
 		}
 
-		v := sessionList[cookie.Value]
+		// 認証成功：セッションにユーザー情報を保存
+		session.AuthenticatedUser = loginUser
+		sessionList[cookie.Value] = session
 
-		authCodeString := uuid.New().String()
-		authData := types.AuthCode{
-			User:         loginUser,
-			ClientId:     v.Client,
-			Scopes:       v.Scopes,
-			Redirect_uri: v.RedirectUri,
-			Expires_at:   time.Now().Add(AUTH_CODE_DURATION * time.Second).Unix(),
-			SessionId:    cookie.Value,
-			Nonce:        v.Nonce, // Store nonce from session to authCode
+		slog.Info("authentication successful", "user", loginUser)
+
+		// 認可画面を表示
+		showConsentPage(w, session)
+		return
+	}
+
+	// 認証済みの場合：認可処理
+	if action == "deny" {
+		// ユーザーが拒否した場合
+		slog.Info("user denied authorization")
+		location := fmt.Sprintf("%s?error=access_denied&error_description=The+resource+owner+denied+the+request&state=%s", session.RedirectUri, session.State)
+		http.Redirect(w, req, location, http.StatusFound)
+		return
+	}
+
+	// 認可コードを生成
+	authCodeString := uuid.New().String()
+	authData := types.AuthCode{
+		User:         session.AuthenticatedUser,
+		ClientId:     session.Client,
+		Scopes:       session.Scopes,
+		Redirect_uri: session.RedirectUri,
+		Expires_at:   time.Now().Add(AUTH_CODE_DURATION * time.Second).Unix(),
+		SessionId:    cookie.Value,
+		Nonce:        session.Nonce,
+	}
+	// 認可コードを保存
+	AuthCodeList[authCodeString] = authData
+
+	slog.Info("auth code accepted", "authCode", authCodeString)
+
+	// レスポンスタイプに応じてリダイレクト処理を変更
+	if session.ResponseType == "code id_token" {
+		// ハイブリッドフロー: 認可コードとIDトークンの両方を返す
+		d := sha256.Sum256([]byte(authCodeString))
+		digest := d[:]
+		leftHalf := digest[:len(digest)/2]
+		hashClaim := base64.RawURLEncoding.EncodeToString(leftHalf)
+
+		jws := &jwt.JWS{
+			Header: jwt.IdTokenHeader{
+				Alg: "RS256",
+				Typ: "JWT",
+			},
+			Payload: jwt.JWT{
+				Iss:   "http://localhost:49151",
+				Sub:   user.Sub,
+				Aud:   "1234",
+				Exp:   time.Now().Add(ACCESS_TOKEN_DURATION * time.Second).Unix(),
+				Iat:   time.Now().Unix(),
+				Nonce: session.Nonce,
+				CHash: hashClaim,
+			},
 		}
-		// 認可コードを保存
-		AuthCodeList[authCodeString] = authData
+		idToken, _ := jws.Make()
 
-		slog.Info("auth code accepted", "authCode", authCodeString)
-
-		// レスポンスタイプに応じてリダイレクト処理を変更
-		if v.ResponseType == "code id_token" {
-			// ハイブリッドフロー: 認可コードとIDトークンの両方を返す
-			d := sha256.Sum256([]byte(authCodeString))
-			digest := d[:]
-			leftHalf := digest[:len(digest)/2]
-			hashClaim := base64.RawURLEncoding.EncodeToString(leftHalf)
-
-			jws := &jwt.JWS{
-				Header: jwt.IdTokenHeader{
-					Alg: "RS256",
-					Typ: "JWT",
-				},
-				Payload: jwt.JWT{
-					Iss:   "http://localhost:49151",
-					Sub:   user.Sub,
-					Aud:   "1234",
-					Exp:   time.Now().Add(ACCESS_TOKEN_DURATION * time.Second).Unix(),
-					Iat:   time.Now().Unix(),
-					Nonce: v.Nonce, // Include nonce in ID token for replay attack prevention
-					CHash: hashClaim,
-				},
-			}
-			idToken, _ := jws.Make()
-
-			location := fmt.Sprintf("%s?code=%s&id_token=%s&state=%s", v.RedirectUri, authCodeString, idToken, v.State)
-			slog.Info("redirect to client (hybrid flow)", "location", location)
-			http.Redirect(w, req, location, http.StatusFound)
-		} else {
-			// 認可コードフロー: 認可コードのみを返す
-			location := fmt.Sprintf("%s?code=%s&state=%s", v.RedirectUri, authCodeString, v.State)
-			slog.Info("redirect to client (authorization code flow)", "location", location)
-			http.Redirect(w, req, location, http.StatusFound)
-		}
+		location := fmt.Sprintf("%s?code=%s&id_token=%s&state=%s", session.RedirectUri, authCodeString, idToken, session.State)
+		slog.Info("redirect to client (hybrid flow)", "location", location)
+		http.Redirect(w, req, location, http.StatusFound)
+	} else {
+		// 認可コードフロー: 認可コードのみを返す
+		location := fmt.Sprintf("%s?code=%s&state=%s", session.RedirectUri, authCodeString, session.State)
+		slog.Info("redirect to client (authorization code flow)", "location", location)
+		http.Redirect(w, req, location, http.StatusFound)
 	}
 }
 

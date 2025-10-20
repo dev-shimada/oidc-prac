@@ -26,7 +26,7 @@ export function generateState(): string {
 }
 
 // Client authentication methods
-export type ClientAuthMethod = 'client_secret_basic' | 'client_secret_post' | 'client_secret_jwt';
+export type ClientAuthMethod = 'client_secret_basic' | 'client_secret_post';
 
 // Configuration for different authentication methods
 interface AuthMethodConfig {
@@ -39,7 +39,6 @@ interface AuthMethodConfig {
 // Default authentication method - can be changed as needed
 let currentAuthMethod: ClientAuthMethod = 'client_secret_basic';
 // let currentAuthMethod: ClientAuthMethod = 'client_secret_post';
-// let currentAuthMethod: ClientAuthMethod = 'client_secret_jwt';
 
 // Generate UserManager settings based on authentication method
 function createUserManagerSettings(authMethod: ClientAuthMethod, config?: AuthMethodConfig): UserManagerSettings {
@@ -56,12 +55,6 @@ function createUserManagerSettings(authMethod: ClientAuthMethod, config?: AuthMe
     loadUserInfo: true,
     // Enable state and nonce storage in sessionStorage for security
     stateStore: typeof window !== 'undefined' ? new WebStorageStateStore({ store: window.sessionStorage }) : undefined,
-    // Ensure state and nonce are used (these are enabled by default in oidc-client-ts)
-    // but explicitly setting them ensures they're always present
-    metadata: {
-      // The library will automatically generate state and nonce
-      // This metadata object can be extended with additional OIDC provider settings if needed
-    },
   };
 
   switch (authMethod) {
@@ -77,17 +70,6 @@ function createUserManagerSettings(authMethod: ClientAuthMethod, config?: AuthMe
         ...baseSettings,
         client_secret: config?.clientSecret || CLIENT_SECRET,
         client_authentication: 'client_secret_post',
-      };
-
-    case 'client_secret_jwt':
-      return {
-        ...baseSettings,
-        client_secret: config?.clientSecret || CLIENT_SECRET,
-        client_authentication: 'client_secret_jwt',
-        // For JWT authentication, you might need additional configuration
-        // such as signing algorithm, key ID, etc.
-        ...(config?.privateKey && { client_assertion_signing_alg: 'HS256' }),
-        ...(config?.keyId && { client_assertion_signing_kid: config.keyId }),
       };
 
     default:
@@ -173,14 +155,5 @@ export function useClientSecretPost(clientSecret?: string): void {
   setAuthenticationMethod('client_secret_post', { 
     method: 'client_secret_post',
     clientSecret 
-  });
-}
-
-export function useClientSecretJWT(clientSecret?: string, privateKey?: string, keyId?: string): void {
-  setAuthenticationMethod('client_secret_jwt', { 
-    method: 'client_secret_jwt',
-    clientSecret,
-    privateKey,
-    keyId
   });
 }
