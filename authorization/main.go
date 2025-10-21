@@ -400,9 +400,9 @@ func authCheck(w http.ResponseWriter, req *http.Request) {
 
 	slog.Info("auth code accepted", "authCode", authCodeString)
 
-	// レスポンスタイプに応じてリダイレクト処理を変更
-	if session.ResponseType == "code id_token" {
-		// ハイブリッドフロー: 認可コードとIDトークンの両方を返す
+	switch session.ResponseType {
+	// ハイブリッドフロー
+	case "code id_token":
 		d := sha256.Sum256([]byte(authCodeString))
 		digest := d[:]
 		leftHalf := digest[:len(digest)/2]
@@ -428,11 +428,16 @@ func authCheck(w http.ResponseWriter, req *http.Request) {
 		location := fmt.Sprintf("%s?code=%s&id_token=%s&state=%s", session.RedirectUri, authCodeString, idToken, session.State)
 		slog.Info("redirect to client (hybrid flow)", "location", location)
 		http.Redirect(w, req, location, http.StatusFound)
-	} else {
-		// 認可コードフロー: 認可コードのみを返す
+	// 認可コードフロー
+	case "code":
 		location := fmt.Sprintf("%s?code=%s&state=%s", session.RedirectUri, authCodeString, session.State)
 		slog.Info("redirect to client (authorization code flow)", "location", location)
 		http.Redirect(w, req, location, http.StatusFound)
+	default:
+		slog.Error(fmt.Sprintf("unsupported response_type during redirect: %s", session.ResponseType))
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte("unsupported_response_type"))
+		return
 	}
 }
 
