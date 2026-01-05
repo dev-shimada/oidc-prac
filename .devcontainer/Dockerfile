@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM golang:1.24.0-bookworm AS vscode
+FROM --platform=$BUILDPLATFORM ghcr.io/dev-shimada/golang-1.25.3-trixie:latest AS vscode
 
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM
