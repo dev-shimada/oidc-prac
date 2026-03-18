@@ -9,6 +9,7 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
+	"os"
 	"os/signal"
 	"strings"
 	"syscall"
@@ -19,6 +20,13 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/exp/slices"
 )
+
+func issuerBaseURL() string {
+	if v := os.Getenv("ISSUER_BASE_URL"); v != "" {
+		return v
+	}
+	return "http://localhost:49151"
+}
 
 const (
 	AUTH_CODE_DURATION    = 300
@@ -126,11 +134,11 @@ func wellKnownOpenIdConfiguration(w http.ResponseWriter, req *http.Request) {
 		OpTosUri                                   string   `json:"op_tos_uri,omitempty"`
 		CodeChallengeMethodsSupported              []string `json:"code_challenge_methods_supported,omitempty"`
 	}{
-		Issuer:                            "http://localhost:49151",
-		AuthorizationEndpoint:             "http://localhost:49151/auth",
-		TokenEndpoint:                     "http://localhost:49151/token",
-		UserinfoEndpoint:                  "http://localhost:49151/userinfo",
-		JwksUri:                           "http://localhost:49151/certs",
+		Issuer:                            issuerBaseURL(),
+		AuthorizationEndpoint:             issuerBaseURL() + "/auth",
+		TokenEndpoint:                     issuerBaseURL() + "/token",
+		UserinfoEndpoint:                  issuerBaseURL() + "/userinfo",
+		JwksUri:                           issuerBaseURL() + "/certs",
 		ScopesSupported:                   []string{"openid", "profile", "email", "address", "phone"},
 		ResponseTypesSupported:            []string{"code", "code id_token"},
 		GrantTypesSupported:               []string{"authorization_code"},
@@ -414,7 +422,7 @@ func authCheck(w http.ResponseWriter, req *http.Request) {
 				Typ: "JWT",
 			},
 			Payload: jwt.JWT{
-				Iss:   "http://localhost:49151",
+				Iss:   issuerBaseURL(),
 				Sub:   user.Sub,
 				Aud:   "1234",
 				Exp:   time.Now().Add(ACCESS_TOKEN_DURATION * time.Second).Unix(),
@@ -627,7 +635,7 @@ func token(w http.ResponseWriter, req *http.Request) {
 			Typ: "JWT",
 		},
 		Payload: jwt.JWT{
-			Iss:    "http://localhost:49151",
+			Iss:    issuerBaseURL(),
 			Sub:    user.Sub,
 			Aud:    "1234",
 			Exp:    time.Now().Add(ACCESS_TOKEN_DURATION * time.Second).Unix(),
@@ -702,7 +710,7 @@ func userinfo(w http.ResponseWriter, req *http.Request) {
 		UserInfoStandardClaims: types.UserInfoStandardClaims{
 			Sub: user.Sub,
 		},
-		Iss: "http://localhost:49151",
+		Iss: issuerBaseURL(),
 		Aud: "1234",
 	}
 	if slices.Contains(scopes, "profile") {

@@ -1,0 +1,13 @@
+# Override for conformance-suite/builder-compose.yml.
+# conformance-suite is a git submodule: .git is a file pointing to
+# "gitdir: ../.git/modules/conformance-suite". The git-commit-id-maven-plugin
+# follows this reference and looks for /usr/src/.git/modules/conformance-suite
+# inside the container, so we mount the actual submodule git data there.
+#
+# Usage (from project root):
+#   MAVEN_CACHE=/tmp/conformance-maven-cache \
+#   docker compose -f conformance-suite/builder-compose.yml -f builder-compose-local.yml up --exit-code-from builder
+services:
+  builder:
+    volumes:
+      - ../.git/modules/conformance-suite:/usr/src/.git/modules/conformance-suite:ro
