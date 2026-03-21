@@ -327,14 +327,28 @@ func showConsentPage(w http.ResponseWriter, session types.Session) {
 }
 
 var user = types.User{
-	Id:          1,
-	AccountName: "name",
-	Password:    "pw",
-	Sub:         "11111111",
-	NameJa:      "徳川慶喜",
-	GivenName:   "慶喜",
-	FamilyName:  "徳川",
-	Locale:      "JP",
+	Id:                  1,
+	AccountName:         "name",
+	Password:            "pw",
+	Sub:                 "11111111",
+	NameJa:              "徳川慶喜",
+	GivenName:           "慶喜",
+	FamilyName:          "徳川",
+	MiddleName:          "8代",
+	Nickname:            "げんろく",
+	PreferredUsername:   "yoshinobu",
+	Profile:             "https://example.com/profile/yoshinobu",
+	Picture:             "https://example.com/picture/yoshinobu.jpg",
+	Website:             "https://example.com/yoshinobu",
+	Gender:              "male",
+	Birthdate:           "1980-01-01",
+	Zoneinfo:            "Asia/Tokyo",
+	Locale:              "ja-JP",
+	Email:               "tokugawa@example.com",
+	EmailVerified:       true,
+	PhoneNumber:         "+81-3-1234-5678",
+	PhoneNumberVerified: true,
+	UpdatedAt:           1700000000,
 }
 
 var AuthCodeList = make(map[string]types.AuthCode)
@@ -746,8 +760,8 @@ func userinfo(w http.ResponseWriter, req *http.Request) {
 			Locale:            user.Locale,
 			UpdatedAt:         user.UpdatedAt,
 		}
-		if !user.Birthdate.IsZero() {
-			m.Birthdate = user.Birthdate.Format("2006-01-02")
+		if user.Birthdate != "" {
+			m.Birthdate = user.Birthdate
 		}
 	}
 	if slices.Contains(scopes, "email") {

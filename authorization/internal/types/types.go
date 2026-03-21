@@ -2,7 +2,6 @@ package types
 
 import (
 	"net/http"
-	"time"
 )
 
 type Session struct {
@@ -49,7 +48,7 @@ type User struct {
 	Picture             string
 	Website             string
 	Gender              string
-	Birthdate           time.Time
+	Birthdate           string
 	Zoneinfo            string
 	Locale              string
 	StreetAddress       string
