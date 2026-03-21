@@ -374,6 +374,7 @@ func authCheck(w http.ResponseWriter, req *http.Request) {
 
 		// 認証成功：セッションにユーザー情報を保存
 		session.AuthenticatedUser = loginUser
+		session.AuthTime = time.Now().Unix()
 		sessionList[cookie.Value] = session
 
 		slog.Info("authentication successful", "user", loginUser)
@@ -402,6 +403,7 @@ func authCheck(w http.ResponseWriter, req *http.Request) {
 		Expires_at:   time.Now().Add(AUTH_CODE_DURATION * time.Second).Unix(),
 		SessionId:    cookie.Value,
 		Nonce:        session.Nonce,
+		AuthTime:     session.AuthTime,
 	}
 	// 認可コードを保存
 	AuthCodeList[authCodeString] = authData
@@ -422,13 +424,14 @@ func authCheck(w http.ResponseWriter, req *http.Request) {
 				Typ: "JWT",
 			},
 			Payload: jwt.JWT{
-				Iss:   issuerBaseURL(),
-				Sub:   user.Sub,
-				Aud:   "1234",
-				Exp:   time.Now().Add(ACCESS_TOKEN_DURATION * time.Second).Unix(),
-				Iat:   time.Now().Unix(),
-				Nonce: session.Nonce,
-				CHash: hashClaim,
+				Iss:      issuerBaseURL(),
+				Sub:      user.Sub,
+				Aud:      "1234",
+				Exp:      time.Now().Add(ACCESS_TOKEN_DURATION * time.Second).Unix(),
+				Iat:      time.Now().Unix(),
+				AuthTime: authData.AuthTime,
+				Nonce:    session.Nonce,
+				CHash:    hashClaim,
 			},
 		}
 		idToken, _ := jws.Make()
@@ -635,13 +638,14 @@ func token(w http.ResponseWriter, req *http.Request) {
 			Typ: "JWT",
 		},
 		Payload: jwt.JWT{
-			Iss:    issuerBaseURL(),
-			Sub:    user.Sub,
-			Aud:    "1234",
-			Exp:    time.Now().Add(ACCESS_TOKEN_DURATION * time.Second).Unix(),
-			Iat:    time.Now().Unix(),
-			Nonce:  v.Nonce, // Include nonce in ID token for replay attack prevention
-			AtHash: hashClaim,
+			Iss:      issuerBaseURL(),
+			Sub:      user.Sub,
+			Aud:      "1234",
+			Exp:      time.Now().Add(ACCESS_TOKEN_DURATION * time.Second).Unix(),
+			Iat:      time.Now().Unix(),
+			AuthTime: v.AuthTime,
+			Nonce:    v.Nonce,
+			AtHash:   hashClaim,
 		},
 	}
 	idToken, _ := jws.Make()

@@ -15,6 +15,7 @@ type Session struct {
 	Code_challenge_method string
 	ResponseType          string
 	AuthenticatedUser     string // 認証されたユーザー名
+	AuthTime              int64  // 認証が行われた時刻
 	// OIDC用
 	// nonce string
 	// IDトークンを払い出すか否か、trueならIDトークンもfalseならOAuthでトークンだけ払い出す
@@ -71,6 +72,7 @@ type AuthCode struct {
 	Expires_at   int64
 	SessionId    string
 	Nonce        string
+	AuthTime     int64
 }
 
 type TokenCode struct {
