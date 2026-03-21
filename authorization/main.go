@@ -683,11 +683,24 @@ func certs(w http.ResponseWriter, req *http.Request) {
 }
 
 func userinfo(w http.ResponseWriter, req *http.Request) {
+	var accessToken string
+
 	h := req.Header.Get("Authorization")
-	tmp := strings.Split(h, " ")
+	if h != "" {
+		// Authorization ヘッダーから Bearer トークンを取得
+		tmp := strings.Split(h, " ")
+		if len(tmp) == 2 {
+			accessToken = tmp[1]
+		}
+	} else {
+		// リクエストボディから access_token を取得
+		if err := req.ParseForm(); err == nil {
+			accessToken = req.FormValue("access_token")
+		}
+	}
 
 	// トークンがあるか確認
-	v, ok := TokenCodeList[tmp[1]]
+	v, ok := TokenCodeList[accessToken]
 	if !ok {
 		w.WriteHeader(http.StatusBadRequest)
 		_, _ = w.Write([]byte("token is wrong.\n"))
