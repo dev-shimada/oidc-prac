@@ -237,11 +237,44 @@ func auth(w http.ResponseWriter, req *http.Request) {
 	}
 	http.SetCookie(w, cookie)
 
-	// prompt=none の場合は UI を表示せずエラーを返す
+	// prompt=none の場合は UI を表示せずに処理する
 	if query.Get("prompt") == "none" {
 		redirectURI := query.Get("redirect_uri")
 		state := query.Get("state")
-		location := fmt.Sprintf("%s?error=login_required&error_description=User+is+not+authenticated&state=%s", redirectURI, state)
+
+		// 既存のセッション Cookie から認証済みユーザーを確認
+		existingCookie, err := req.Cookie("session")
+		var authenticatedUser string
+		var authTime int64
+		if err == nil {
+			if existingSession, ok := sessionList[existingCookie.Value]; ok {
+				authenticatedUser = existingSession.AuthenticatedUser
+				authTime = existingSession.AuthTime
+			}
+		}
+
+		if authenticatedUser == "" {
+			// 未認証 → login_required
+			location := fmt.Sprintf("%s?error=login_required&error_description=User+is+not+authenticated&state=%s", redirectURI, state)
+			http.Redirect(w, req, location, http.StatusFound)
+			return
+		}
+
+		// 認証済み → UI なしで認可コードを発行
+		authCodeString := uuid.New().String()
+		authData := types.AuthCode{
+			User:         authenticatedUser,
+			ClientId:     session.Client,
+			Scopes:       session.Scopes,
+			Redirect_uri: session.RedirectUri,
+			Expires_at:   time.Now().Add(AUTH_CODE_DURATION * time.Second).Unix(),
+			SessionId:    sessionId,
+			Nonce:        session.Nonce,
+			AuthTime:     authTime,
+		}
+		AuthCodeList[authCodeString] = authData
+
+		location := fmt.Sprintf("%s?code=%s&state=%s", redirectURI, authCodeString, state)
 		http.Redirect(w, req, location, http.StatusFound)
 		return
 	}
