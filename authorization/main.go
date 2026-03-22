@@ -164,6 +164,9 @@ func wellKnownOpenIdConfiguration(w http.ResponseWriter, req *http.Request) {
 
 var sessionList = make(map[string]types.Session)
 
+// lastAuthTime はユーザーが最後に認証した時刻（auth_time クレーム用）
+var lastAuthTime int64
+
 func auth(w http.ResponseWriter, req *http.Request) {
 	query := req.URL.Query()
 	requiredParameter := []string{"response_type", "client_id", "redirect_uri"}
@@ -270,7 +273,7 @@ func auth(w http.ResponseWriter, req *http.Request) {
 			Expires_at:   time.Now().Add(AUTH_CODE_DURATION * time.Second).Unix(),
 			SessionId:    sessionId,
 			Nonce:        session.Nonce,
-			AuthTime:     authTime,
+			AuthTime:     lastAuthTime,
 		}
 		AuthCodeList[authCodeString] = authData
 
@@ -431,6 +434,7 @@ func authCheck(w http.ResponseWriter, req *http.Request) {
 		// 認証成功：セッションにユーザー情報を保存
 		session.AuthenticatedUser = loginUser
 		session.AuthTime = time.Now().Unix()
+		lastAuthTime = session.AuthTime
 		sessionList[cookie.Value] = session
 
 		slog.Info("authentication successful", "user", loginUser)
@@ -459,7 +463,7 @@ func authCheck(w http.ResponseWriter, req *http.Request) {
 		Expires_at:   time.Now().Add(AUTH_CODE_DURATION * time.Second).Unix(),
 		SessionId:    cookie.Value,
 		Nonce:        session.Nonce,
-		AuthTime:     session.AuthTime,
+		AuthTime:     lastAuthTime,
 	}
 	// 認可コードを保存
 	AuthCodeList[authCodeString] = authData
