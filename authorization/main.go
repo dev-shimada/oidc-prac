@@ -237,6 +237,15 @@ func auth(w http.ResponseWriter, req *http.Request) {
 	}
 	http.SetCookie(w, cookie)
 
+	// prompt=none の場合は UI を表示せずエラーを返す
+	if query.Get("prompt") == "none" {
+		redirectURI := query.Get("redirect_uri")
+		state := query.Get("state")
+		location := fmt.Sprintf("%s?error=login_required&error_description=User+is+not+authenticated&state=%s", redirectURI, state)
+		http.Redirect(w, req, location, http.StatusFound)
+		return
+	}
+
 	// 既存のセッションがあり、認証済みの場合は認可画面を表示
 	if session.AuthenticatedUser != "" {
 		// 認可画面を表示
