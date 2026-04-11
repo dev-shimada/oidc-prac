@@ -1,0 +1,43 @@
+services:
+  authorization:
+    build: ../authorization
+    ports:
+      - "49151:49151"
+    environment:
+      - ISSUER_BASE_URL=http://localhost:49151
+    volumes:
+      - auth-keys:/app
+
+  upstream:
+    image: nginx:alpine
+    ports:
+      - "3000:80"
+
+  oauth2proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy:latest
+    ports:
+      - "4180:4180"
+    command:
+      - --provider=oidc
+      - --oidc-issuer-url=http://localhost:49151
+      - --skip-oidc-discovery
+      - --login-url=http://localhost:49151/auth
+      - --redeem-url=http://authorization:49151/token
+      - --oidc-jwks-url=http://authorization:49151/certs
+      - --profile-url=http://authorization:49151/userinfo
+      - --client-id=1234
+      - --client-secret=secret
+      - --redirect-url=http://localhost:4180/oauth2/callback
+      - --upstream=http://upstream:80
+      - --email-domains=*
+      - --cookie-secret=b2F1dGgycHJveHktY29va2llLXNlY3JldC0zMmJ5dGU=
+      - --cookie-secure=false
+      - --http-address=0.0.0.0:4180
+      - --scope=openid email profile
+      - --insecure-oidc-allow-unverified-email
+    depends_on:
+      - authorization
+      - upstream
+
+volumes:
+  auth-keys:
